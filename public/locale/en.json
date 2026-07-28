@@ -95,6 +95,7 @@
   "stop_and_process": "Stop & Process",
   "stop_recording": "Stop Recording",
   "tnc_accept_failed": "Failed to accept the terms and conditions.",
+  "tnc_agree_checkbox": "I have read and agree to the terms and conditions.",
   "tnc_unavailable": "Terms and conditions are not available right now.",
   "tokens_per_user": "Tokens per User",
   "transcribing_audio": "Transcribing audio",
