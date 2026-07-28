@@ -11,8 +11,15 @@ import {
   Square,
   X,
 } from "lucide-react";
+import type { PointerEvent as ReactPointerEvent, SyntheticEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  FAB_POSITION_RESET_EVENT,
+  fabPositionStorageKey,
+  loadStoredFabOffset,
+  resolveCurrentUserId,
+} from "@/lib/fab-position";
 import { fetchHistoryAudio } from "@/lib/scribe-history";
 import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import { applyFieldToState, collectFieldsToFill } from "@/lib/structured/fill";
@@ -39,11 +46,226 @@ const PROCESSING_STEPS = [
   "filling_form",
 ] as const;
 
+const DRAG_THRESHOLD_PX = 4;
+const VIEWPORT_MARGIN_PX = 5;
+
+function clampRectToViewport(rect: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}) {
+  const maxLeft = Math.max(
+    VIEWPORT_MARGIN_PX,
+    window.innerWidth - rect.width - VIEWPORT_MARGIN_PX,
+  );
+  const maxTop = Math.max(
+    VIEWPORT_MARGIN_PX,
+    window.innerHeight - rect.height - VIEWPORT_MARGIN_PX,
+  );
+  return {
+    left: Math.min(Math.max(rect.left, VIEWPORT_MARGIN_PX), maxLeft),
+    top: Math.min(Math.max(rect.top, VIEWPORT_MARGIN_PX), maxTop),
+  };
+}
+
+/**
+ * Lets the user drag the floating scribe widget away from its default
+ * bottom-right corner — it can otherwise sit on top of a page's own submit
+ * button. Position is persisted across sessions (per browser), keyed by
+ * the current CARE user id (see `@/lib/fab-position`) so a shared/kiosk
+ * device doesn't leak one person's dragged position into another user's
+ * session. A plain click/tap still reaches the button underneath;
+ * dragging only kicks in once the pointer has moved past a small
+ * threshold, and the resulting click is suppressed so Start/Stop etc.
+ * don't fire accidentally. Double-click/tap — or the "Reset position"
+ * button on the settings page — resets the widget back to its default
+ * corner. The widget's on-screen rect is always clamped to the viewport
+ * (both while dragging and on window resize) so it can never be dragged
+ * fully off-screen and become unreachable.
+ */
+function useDraggableFab() {
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const userIdRef = useRef<string | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    rectLeft: number;
+    rectTop: number;
+    width: number;
+    height: number;
+    pointerId: number;
+  } | null>(null);
+  const draggedRef = useRef(false);
+
+  // Resolve the current user (async — CARE has no synchronous global for
+  // it) and load *their* stored offset, so a shared device never shows a
+  // previous user's dragged position. Clamped in case the window has
+  // shrunk since that offset was last saved.
+  useEffect(() => {
+    let cancelled = false;
+    resolveCurrentUserId().then((userId) => {
+      if (cancelled || draggedRef.current) return;
+      userIdRef.current = userId;
+      const stored = loadStoredFabOffset(fabPositionStorageKey(userId));
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) {
+        setOffset(stored);
+        return;
+      }
+      // `rect` still reflects the un-offset (0,0) position at this point,
+      // so it doubles as the "natural" anchor to clamp against.
+      const clamped = clampRectToViewport({
+        left: rect.left + stored.x,
+        top: rect.top + stored.y,
+        width: rect.width,
+        height: rect.height,
+      });
+      setOffset({
+        x: clamped.left - rect.left,
+        y: clamped.top - rect.top,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleReset = () => setOffset({ x: 0, y: 0 });
+    window.addEventListener(FAB_POSITION_RESET_EVENT, handleReset);
+    return () =>
+      window.removeEventListener(FAB_POSITION_RESET_EVENT, handleReset);
+  }, []);
+
+  const onPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return; // left mouse / touch / pen only
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      dragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        originX: offset.x,
+        originY: offset.y,
+        rectLeft: rect.left,
+        rectTop: rect.top,
+        width: rect.width,
+        height: rect.height,
+        pointerId: e.pointerId,
+      };
+    },
+    [offset],
+  );
+
+  useEffect(() => {
+    const handleMove = (e: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      if (!draggedRef.current && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      if (!draggedRef.current) {
+        draggedRef.current = true;
+        setIsDragging(true);
+      }
+      // Clamp using the widget's own measured size so it always keeps at
+      // least VIEWPORT_MARGIN_PX visible on every edge of the viewport.
+      const clamped = clampRectToViewport({
+        left: drag.rectLeft + dx,
+        top: drag.rectTop + dy,
+        width: drag.width,
+        height: drag.height,
+      });
+      setOffset({
+        x: drag.originX + (clamped.left - drag.rectLeft),
+        y: drag.originY + (clamped.top - drag.rectTop),
+      });
+    };
+
+    const handleUp = () => {
+      dragRef.current = null;
+      setIsDragging(false);
+      if (draggedRef.current) {
+        setOffset((current) => {
+          try {
+            localStorage.setItem(
+              fabPositionStorageKey(userIdRef.current),
+              JSON.stringify(current),
+            );
+          } catch {
+            // ignore storage errors (private mode, quota, etc.)
+          }
+          return current;
+        });
+        // clear after this tick so the click event that follows a drag
+        // (fired right after pointerup) is still recognised as a drag.
+        setTimeout(() => {
+          draggedRef.current = false;
+        }, 0);
+      }
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    const reclamp = () => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const clamped = clampRectToViewport(rect);
+      const dLeft = clamped.left - rect.left;
+      const dTop = clamped.top - rect.top;
+      if (dLeft === 0 && dTop === 0) return;
+      setOffset((current) => ({
+        x: current.x + dLeft,
+        y: current.y + dTop,
+      }));
+    };
+
+    reclamp();
+    window.addEventListener("resize", reclamp);
+    return () => window.removeEventListener("resize", reclamp);
+  }, []);
+
+  const onClickCapture = useCallback((e: SyntheticEvent) => {
+    if (draggedRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, []);
+
+  const resetPosition = useCallback(() => {
+    setOffset({ x: 0, y: 0 });
+    try {
+      localStorage.removeItem(fabPositionStorageKey(userIdRef.current));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  return {
+    offset,
+    isDragging,
+    containerRef,
+    onPointerDown,
+    onClickCapture,
+    resetPosition,
+  };
+}
+
 export function ScribeController(props: ScribeControllerProps) {
-  // Tailwind utilities in this plugin are scoped under
-  // `.care-filly-fe-container` (see index.css). The rendered output must
-  // live inside that container for classes (fixed positioning, gradients, etc.)
-  // and theme tokens to apply.
   return (
     <div className="care-filly-fe-container">
       <ScribeControllerInner {...props} />
@@ -68,6 +290,14 @@ function ScribeControllerInner({
   const facilityId = getFacilityIdFromUrl();
   const quota = useQuota(facilityId);
   const preference = useScribePreference();
+
+  // Lets the widget be dragged clear of a page's own submit button.
+  const fabDrag = useDraggableFab();
+  const fabDragStyle = {
+    transform: `translate3d(${fabDrag.offset.x}px, ${fabDrag.offset.y}px, 0)`,
+    touchAction: "none",
+    cursor: fabDrag.isDragging ? "grabbing" : undefined,
+  } as const;
 
   const clearFillTimeouts = useCallback(() => {
     fillTimeoutsRef.current.forEach(clearTimeout);
@@ -306,7 +536,15 @@ function ScribeControllerInner({
     const exceeded = quota.quotaExceeded;
 
     return (
-      <div className="scribe-pop-in fixed right-4 bottom-2 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-4">
+      <div
+        ref={fabDrag.containerRef}
+        className="scribe-pop-in fixed right-4 bottom-2 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-4"
+        style={fabDragStyle}
+        onPointerDown={fabDrag.onPointerDown}
+        onClickCapture={fabDrag.onClickCapture}
+        onDoubleClick={fabDrag.resetPosition}
+        title={t("ai_filly")}
+      >
         <HistoryPanel
           open={historyOpen}
           onOpenChange={setHistoryOpen}
@@ -395,7 +633,14 @@ function ScribeControllerInner({
   // Compact / status views (recording, processing, completed, failed)
   if (!expanded) {
     return (
-      <div className="scribe-pop-in fixed right-4 bottom-4 z-9999 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6">
+      <div
+        ref={fabDrag.containerRef}
+        className="scribe-pop-in fixed right-4 bottom-4 z-9999 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6"
+        style={fabDragStyle}
+        onPointerDown={fabDrag.onPointerDown}
+        onClickCapture={fabDrag.onClickCapture}
+        onDoubleClick={fabDrag.resetPosition}
+      >
         {/* Live transcript — collapsible, shown while processing/completed */}
         {showTranscript && !transcriptMinimized && (
           <div className="w-72 overflow-hidden rounded-2xl border border-gray-100 bg-white/95 shadow-xl backdrop-blur">
@@ -564,10 +809,19 @@ function ScribeControllerInner({
 
   // Expanded view — show transcript & results
   return (
-    <div className="scribe-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6">
+    <div
+      ref={fabDrag.containerRef}
+      className="scribe-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6"
+      style={fabDragStyle}
+    >
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-3 py-2.5">
+        <div
+          className="flex items-center justify-between border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-3 py-2.5"
+          onPointerDown={fabDrag.onPointerDown}
+          onClickCapture={fabDrag.onClickCapture}
+          onDoubleClick={fabDrag.resetPosition}
+        >
           <div className="flex items-center gap-2">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white">
               <CheckCircle2 className="h-3.5 w-3.5" />
@@ -660,22 +914,6 @@ function ScribeControllerInner({
 }
 
 // --- AI animation sub-components ---
-
-/** Live equalizer voice bars (inherits color via `currentColor`). */
-/** @deprecated No longer used — kept for potential future reuse. */
-function _VoiceBars({ className }: { className?: string }) {
-  return (
-    <span className={cn("flex h-4 items-end gap-0.5", className)}>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <span
-          key={i}
-          className="scribe-bar w-0.5 rounded-full bg-current"
-          style={{ height: "100%", animationDelay: `${i * 0.12}s` }}
-        />
-      ))}
-    </span>
-  );
-}
 
 /** Premium AI processing indicator — two counter-rotating gradient arc
  *  "comets" around a glowing core. No dependencies, care green palette. */

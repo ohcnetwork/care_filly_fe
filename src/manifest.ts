@@ -22,7 +22,7 @@ const manifest = {
   adminNavItems: [
     {
       url: "/admin/scribe/quotas",
-      name: "Scribe Quotas",
+      name: "Filly Quotas",
       icon: createElement(Mic, { className: "h-4 w-4" }),
     },
   ],
