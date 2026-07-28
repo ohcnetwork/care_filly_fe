@@ -164,17 +164,31 @@ export interface FacilityOption {
   name: string;
 }
 
-/** Superadmin facility search on the CARE API (for quota creation). */
+/**
+ * Facility search scoped to the current user's own facilities (from
+ * getcurrentuser), filtered client-side. The old getallfacilities endpoint
+ * only ever returned public facilities, which was useless for quota
+ * management.
+ */
 export async function searchFacilities(
   searchText: string,
 ): Promise<FacilityOption[]> {
   const baseUrl = window.CARE_API_URL;
   if (!baseUrl) return [];
-  const url = new URL(`${baseUrl.replace(/\/$/, "")}/api/v1/getallfacilities/`);
-  url.searchParams.set("limit", "20");
-  if (searchText.trim()) url.searchParams.set("search_text", searchText.trim());
-  const response = await fetch(url.toString(), { headers: getHeaders() });
-  if (!response.ok) return [];
-  const data = (await response.json()) as { results?: FacilityOption[] };
-  return data.results ?? [];
+  try {
+    const res = await fetch(
+      new URL("/api/v1/users/getcurrentuser/", baseUrl).toString(),
+      { headers: getHeaders() },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as { facilities?: FacilityOption[] };
+    const facilities = data.facilities ?? [];
+    const query = searchText.trim().toLowerCase();
+    if (!query) return facilities;
+    return facilities.filter((facility) =>
+      facility.name.toLowerCase().includes(query),
+    );
+  } catch {
+    return [];
+  }
 }
