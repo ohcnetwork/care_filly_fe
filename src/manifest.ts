@@ -12,7 +12,7 @@ const ScribeProfileSection = lazy(
 );
 
 const manifest = {
-  plugin: "care-eka-scribe-fe",
+  plugin: "care-filly-fe",
   routes,
   extends: ["Scribe", "UserProfileSections"],
   components: {
@@ -23,6 +23,13 @@ const manifest = {
     {
       url: "/admin/scribe/quotas",
       name: "Scribe Quotas",
+      icon: createElement(Mic, { className: "h-4 w-4" }),
+    },
+  ],
+  userNavItems: [
+    {
+      name: "Filly",
+      url: "filly",
       icon: createElement(Mic, { className: "h-4 w-4" }),
     },
   ],

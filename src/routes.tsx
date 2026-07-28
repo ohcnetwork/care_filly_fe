@@ -10,6 +10,9 @@ const QuotaUsagePage = lazy(() =>
     default: m.QuotaUsagePage,
   })),
 );
+const ScribeSettingsPage = lazy(
+  () => import("./components/scribe/ScribeSettingsPage"),
+);
 
 function AdminPage({ children }: { children: React.ReactNode }) {
   // Tailwind utilities in this plugin are scoped under
@@ -31,6 +34,11 @@ const routes = {
     <AdminPage>
       <QuotaUsagePage quotaId={id} />
     </AdminPage>
+  ),
+  "/facility/:facilityId/users/:user/filly": () => (
+    <Suspense fallback={null}>
+      <ScribeSettingsPage />
+    </Suspense>
   ),
 };
 

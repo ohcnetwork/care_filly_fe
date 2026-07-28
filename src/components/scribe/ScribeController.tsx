@@ -372,7 +372,7 @@ function ScribeControllerInner({
                 ? t("quota_exceeded")
                 : scribe.isStarting
                   ? t("starting")
-                  : t("ai_scribe")}
+                  : t("ai_filly")}
             </span>
             {!exceeded && <Sparkles className="relative h-4 w-4 opacity-80" />}
           </button>
