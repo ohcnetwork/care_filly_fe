@@ -71,10 +71,22 @@ async function quotaFetch<T>(
     query?: Record<string, string>;
   } = {},
 ): Promise<T> {
+  return scribeApiFetch<T>(`/quota${path}`, options);
+}
+
+/** Authenticated fetch against the scribe backend's v1 base. */
+async function scribeApiFetch<T>(
+  path: string,
+  options: {
+    method?: string;
+    body?: unknown;
+    query?: Record<string, string>;
+  } = {},
+): Promise<T> {
   if (!SCRIBE_BASE_URL) {
     throw new QuotaApiError(0, "no_backend", "No scribe backend configured");
   }
-  const url = new URL(`${SCRIBE_BASE_URL}/quota${path}`);
+  const url = new URL(`${SCRIBE_BASE_URL}${path}`);
   for (const [key, value] of Object.entries(options.query ?? {})) {
     if (value !== undefined && value !== "") url.searchParams.set(key, value);
   }
@@ -123,6 +135,28 @@ export const quotaApi = {
     quotaFetch<ScribeQuota>(`/${externalId}`, { method: "PATCH", body: data }),
   delete: (externalId: string) =>
     quotaFetch<{ detail: string }>(`/${externalId}`, { method: "DELETE" }),
+};
+
+export interface ScribePreference {
+  /** Whether the user has switched scribe on in their profile. */
+  enabled: boolean;
+  /** Current terms & conditions text. */
+  tnc: string;
+  /** Whether the recorded consent matches the current TnC. */
+  tnc_accepted: boolean;
+  tnc_accepted_date: string | null;
+  /** Whether any of the user's facilities has scribe enabled. */
+  facility_available: boolean;
+}
+
+/** Per-user scribe opt-in, managed from the profile page. */
+export const scribePreferenceApi = {
+  get: () => scribeApiFetch<ScribePreference>("/preferences/scribe"),
+  set: (enabled: boolean) =>
+    scribeApiFetch<ScribePreference>("/preferences/scribe", {
+      method: "PUT",
+      body: { enabled },
+    }),
 };
 
 export interface FacilityOption {

@@ -7,6 +7,7 @@ import {
   Download,
   History,
   MicOff,
+  RefreshCw,
   Search,
   Sparkles,
   Trash2,
@@ -38,6 +39,8 @@ interface HistoryPanelProps {
   onOpenChange: (open: boolean) => void;
   /** Fill the current form with an entry's extracted values. */
   onApply?: (entry: ScribeHistoryEntry) => void;
+  /** Re-run transcription + extraction on an entry's stored recording. */
+  onReprocess?: (entry: ScribeHistoryEntry) => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -60,6 +63,7 @@ export function HistoryPanel({
   open,
   onOpenChange,
   onApply,
+  onReprocess,
 }: HistoryPanelProps) {
   const { t } = useTranslation();
   const [entries, setEntries] = useState<ScribeHistoryEntry[] | null>(null);
@@ -189,6 +193,7 @@ export function HistoryPanel({
               }
               onDelete={() => void handleDelete(entry.id)}
               onApply={onApply}
+              onReprocess={onReprocess}
             />
           ))}
         </div>
@@ -238,12 +243,14 @@ function HistoryEntryRow({
   onToggle,
   onDelete,
   onApply,
+  onReprocess,
 }: {
   entry: ScribeHistoryEntry;
   expanded: boolean;
   onToggle: () => void;
   onDelete: () => void;
   onApply?: (entry: ScribeHistoryEntry) => void;
+  onReprocess?: (entry: ScribeHistoryEntry) => void;
 }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -294,7 +301,7 @@ function HistoryEntryRow({
   );
 
   return (
-    <div className="border-b border-gray-50 last:border-b-0">
+    <div className="border-b border-gray-100 last:border-b-0">
       <button
         onClick={onToggle}
         className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-gray-50"
@@ -414,19 +421,27 @@ function HistoryEntryRow({
                   {t("apply_to_form")}
                 </button>
               )}
+            {onReprocess && entry.hasAudio && (
+              <button
+                onClick={() => onReprocess(entry)}
+                title={t("run_again_description")}
+                className="flex items-center gap-1 rounded-md bg-white px-2 py-1.5 text-[11px] font-medium text-gray-600 shadow-sm ring-1 ring-gray-200 hover:bg-gray-100"
+              >
+                <RefreshCw className="h-3 w-3 shrink-0" />
+                <span className="sm:block hidden">{t("reprocess_audio")}</span>
+              </button>
+            )}
             {entry.transcript && (
               <button
+                title={copied ? t("copied") : t("copy_transcript")}
                 onClick={() => void handleCopy()}
-                className="flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[11px] font-medium text-gray-600 shadow-sm ring-1 ring-gray-200 hover:bg-gray-100"
+                className="flex items-center gap-1 rounded-md bg-white px-2 py-1.5 text-[11px] font-medium text-gray-600 shadow-sm ring-1 ring-gray-200 hover:bg-gray-100"
               >
                 {copied ? (
                   <Check className="h-3 w-3 text-primary-600 shrink-0" />
                 ) : (
                   <Copy className="h-3 w-3 shrink-0" />
                 )}
-                <span className="sm:block hidden">
-                  {copied ? t("copied") : t("copy_transcript")}
-                </span>
               </button>
             )}
             {audioUrl && (

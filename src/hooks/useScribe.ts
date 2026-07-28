@@ -108,6 +108,16 @@ interface UseScribeReturn {
   resumeRecording: () => void;
   stopRecording: () => Promise<void>;
   cancelRecording: () => Promise<void>;
+  /** Re-run transcription + extraction on a pre-recorded audio blob. */
+  processAudioFile: (
+    audio: Blob,
+    options?: {
+      durationSeconds?: number;
+      encounterId?: string;
+      templateIds?: string[];
+      language?: string[];
+    },
+  ) => Promise<void>;
   reset: () => Promise<void>;
   updateAccessToken: (token: string) => void;
 }
@@ -394,13 +404,52 @@ export function useScribe({
       try {
         const audio = await stopLocalCapture();
         if (!audio || !sessionId) return;
-        await uploadHistoryAudio(sessionId, audio);
+        const durationSeconds = Math.round(accumulatedRef.current / 1000);
+        await uploadHistoryAudio(sessionId, audio, durationSeconds);
       } catch (err) {
         // Non-fatal — the history entry itself is written by the backend.
         if (DEBUG) console.warn("[Scribe] History audio upload failed:", err);
       }
     },
     [stopLocalCapture],
+  );
+
+  /**
+   * Session parameters shared by live recordings and re-runs of stored
+   * audio: template ids, language hint, and the additional_data payload
+   * (form schema, facility for quota enforcement, encounter).
+   */
+  const buildSessionExtras = useCallback(
+    (options?: {
+      encounterId?: string;
+      templateIds?: string[];
+      language?: string[];
+    }) => {
+      // Send the form schema with the session — the backend runs the
+      // extraction directly, no pre-registered template needed.
+      const templateIds = options?.templateIds || ["care_form"];
+      const facilityId = getFacilityIdFromUrl();
+      let additionalData: Record<string, unknown> | undefined =
+        options?.encounterId
+          ? { encounter_id: options.encounterId }
+          : undefined;
+      if (facilityId) {
+        // Used by the backend for per-user/facility quota enforcement.
+        additionalData = { ...additionalData, facility_id: facilityId };
+      }
+      const fields = formStateProp ? extractFormFields(formStateProp) : [];
+      if (fields.length > 0) {
+        const { desc, example } = buildTemplateDescription(fields);
+        additionalData = {
+          ...additionalData,
+          care_template: { desc, example },
+        };
+      }
+
+      const language = options?.language || SCRIBE_LANGUAGES;
+      return { templateIds, additionalData, language };
+    },
+    [formStateProp],
   );
 
   const startRecording = useCallback(
@@ -416,28 +465,8 @@ export function useScribe({
 
         const client = await ensureInstance();
 
-        // Send the form schema with the session — the backend runs the
-        // extraction directly, no pre-registered template needed.
-        const templateIds = options?.templateIds || ["care_form"];
-        const facilityId = getFacilityIdFromUrl();
-        let additionalData: Record<string, unknown> | undefined =
-          options?.encounterId
-            ? { encounter_id: options.encounterId }
-            : undefined;
-        if (facilityId) {
-          // Used by the backend for per-user/facility quota enforcement.
-          additionalData = { ...additionalData, facility_id: facilityId };
-        }
-        const fields = formStateProp ? extractFormFields(formStateProp) : [];
-        if (fields.length > 0) {
-          const { desc, example } = buildTemplateDescription(fields);
-          additionalData = {
-            ...additionalData,
-            care_template: { desc, example },
-          };
-        }
-
-        const language = options?.language || SCRIBE_LANGUAGES;
+        const { templateIds, additionalData, language } =
+          buildSessionExtras(options);
 
         const recordResult = await client.startRecording({
           templates: templateIds,
@@ -470,7 +499,7 @@ export function useScribe({
     },
     [
       ensureInstance,
-      formStateProp,
+      buildSessionExtras,
       updateStatus,
       startTimer,
       startLocalCapture,
@@ -502,43 +531,15 @@ export function useScribe({
     }
   }, [startTimer, updateStatus]);
 
-  const stopRecording = useCallback(async () => {
-    try {
-      const client = instanceRef.current;
-      if (!client) return;
-
-      stopTimer(true); // save accumulated time for the history entry
-      updateStatus("processing");
-
-      const tStop = performance.now();
-
-      const endResult = await client.endRecording();
-      if (!endResult.success) {
-        throw new Error(endResult.error.message || "Failed to end recording");
-      }
-      if (!endResult.data.sessionEnded) {
-        // Some chunks failed to upload — retry once, then finalize.
-        const retryResult = await client.retryFailedUploads();
-        if (!retryResult.success || retryResult.data.stillFailed.length > 0) {
-          throw new Error("Failed to upload recording audio");
-        }
-        const total = endResult.data.totalFiles;
-        const endSessionResult = await client.endSession({
-          audio_files_sent: total,
-          audio_files_uploaded: total,
-        });
-        if (!endSessionResult.success) {
-          throw new Error(
-            endSessionResult.error.message || "Failed to end recording",
-          );
-        }
-      }
-
-      const tUploaded = performance.now();
-
-      const sessionId = sessionIdRef.current;
-      if (!sessionId) throw new Error("No session ID");
-
+  /**
+   * Poll the session until our template data is terminal, emit the
+   * transcript/result callbacks, and flip status to "completed".
+   * Shared by stopRecording (live mic session) and processAudioFile
+   * (re-run of stored audio).
+   */
+  const awaitSessionResult = useCallback(
+    async (client: ScribeClient, sessionId: string): Promise<void> => {
+      const tStart = performance.now();
       let transcriptEmitted = false;
       let tTranscript = 0;
 
@@ -588,10 +589,9 @@ export function useScribe({
       const tDone = performance.now();
       const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
       console.info(
-        `[Scribe] timing — upload flush: ${secs(tUploaded - tStop)}, ` +
-          `transcript: +${tTranscript ? secs(tTranscript - tUploaded) : "n/a"}, ` +
-          `templates: +${secs(tDone - (tTranscript || tUploaded))}, ` +
-          `total: ${secs(tDone - tStop)}` +
+        `[Scribe] timing — transcript: +${tTranscript ? secs(tTranscript - tStart) : "n/a"}, ` +
+          `templates: +${secs(tDone - (tTranscript || tStart))}, ` +
+          `total: ${secs(tDone - tStart)}` +
           (earlySessionData ? " (early-exit before session completed)" : ""),
       );
 
@@ -618,6 +618,51 @@ export function useScribe({
       setResult(scribeResult);
       updateStatus("completed");
       onResult?.(scribeResult);
+    },
+    [updateStatus, onTranscript, onResult],
+  );
+
+  const stopRecording = useCallback(async () => {
+    try {
+      const client = instanceRef.current;
+      if (!client) return;
+
+      stopTimer(true); // save accumulated time for the history entry
+      updateStatus("processing");
+
+      const tStop = performance.now();
+
+      const endResult = await client.endRecording();
+      if (!endResult.success) {
+        throw new Error(endResult.error.message || "Failed to end recording");
+      }
+      if (!endResult.data.sessionEnded) {
+        // Some chunks failed to upload — retry once, then finalize.
+        const retryResult = await client.retryFailedUploads();
+        if (!retryResult.success || retryResult.data.stillFailed.length > 0) {
+          throw new Error("Failed to upload recording audio");
+        }
+        const total = endResult.data.totalFiles;
+        const endSessionResult = await client.endSession({
+          audio_files_sent: total,
+          audio_files_uploaded: total,
+        });
+        if (!endSessionResult.success) {
+          throw new Error(
+            endSessionResult.error.message || "Failed to end recording",
+          );
+        }
+      }
+
+      const tUploaded = performance.now();
+      console.info(
+        `[Scribe] upload flush: ${((tUploaded - tStop) / 1000).toFixed(1)}s`,
+      );
+
+      const sessionId = sessionIdRef.current;
+      if (!sessionId) throw new Error("No session ID");
+
+      await awaitSessionResult(client, sessionId);
 
       // The backend wrote the history row during finalize — attach the
       // locally captured audio to it now.
@@ -635,11 +680,118 @@ export function useScribe({
   }, [
     stopTimer,
     updateStatus,
-    onTranscript,
-    onResult,
+    awaitSessionResult,
     onError,
     uploadCapturedAudio,
   ]);
+
+  /**
+   * Re-run the full scribe pipeline (transcription + extraction) on a
+   * pre-recorded audio blob — e.g. a recording streamed back from the
+   * server-side history. Creates a fresh session with `upload_type:
+   * "single"`, uploads the blob in one shot, finalizes, and polls for
+   * results exactly like a live recording.
+   */
+  const processAudioFile = useCallback(
+    async (
+      audio: Blob,
+      options?: {
+        durationSeconds?: number;
+        encounterId?: string;
+        templateIds?: string[];
+        language?: string[];
+      },
+    ) => {
+      setIsStarting(true);
+      try {
+        setError(null);
+        setResult(null);
+
+        // Surface the original recording length in the UI/history row.
+        const durationSeconds = options?.durationSeconds ?? 0;
+        accumulatedRef.current = durationSeconds * 1000;
+        setDuration(durationSeconds);
+
+        updateStatus("processing");
+
+        const client = await ensureInstance();
+        const { templateIds, additionalData, language } =
+          buildSessionExtras(options);
+
+        const createResult = await client.createSession({
+          templates: templateIds,
+          model: "pro",
+          language_hint: language,
+          upload_type: "single",
+          communication_protocol: "http",
+          session_mode: "consultation",
+          additional_data: additionalData,
+        });
+        if (!createResult.success) {
+          throw new Error(
+            createResult.error.message || "Failed to create session",
+          );
+        }
+        const session = createResult.data;
+        sessionIdRef.current = session.session_id;
+
+        const ext = audio.type.includes("mp4")
+          ? "m4a"
+          : audio.type.includes("wav")
+            ? "wav"
+            : audio.type.includes("mpeg") || audio.type.includes("mp3")
+              ? "mp3"
+              : "webm";
+        const uploadResult = await client.uploadAudioFile(
+          audio,
+          `1.${ext}`,
+          session.upload_url,
+        );
+        if (!uploadResult.success) {
+          throw new Error(
+            uploadResult.error.message || "Failed to upload audio",
+          );
+        }
+
+        const endResult = await client.endSession(
+          { audio_files_sent: 1, audio_files_uploaded: 1 },
+          session.session_id,
+        );
+        if (!endResult.success) {
+          throw new Error(endResult.error.message || "Failed to end session");
+        }
+
+        await awaitSessionResult(client, session.session_id);
+
+        // The backend wrote a fresh history row — re-attach the recording
+        // so the new entry can itself be replayed or re-run.
+        try {
+          await uploadHistoryAudio(
+            session.session_id,
+            audio,
+            durationSeconds || undefined,
+          );
+        } catch (err) {
+          if (DEBUG) console.warn("[Scribe] History audio upload failed:", err);
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to process audio";
+        setError(message);
+        updateStatus("failed");
+        onError?.(err instanceof Error ? err : new Error(message));
+      } finally {
+        setIsStarting(false);
+      }
+    },
+    [
+      ensureInstance,
+      buildSessionExtras,
+      awaitSessionResult,
+      updateStatus,
+      onError,
+    ],
+  );
 
   const cancelRecording = useCallback(async () => {
     discardLocalCapture();
@@ -701,6 +853,7 @@ export function useScribe({
     resumeRecording,
     stopRecording,
     cancelRecording,
+    processAudioFile,
     reset,
     updateAccessToken,
   };

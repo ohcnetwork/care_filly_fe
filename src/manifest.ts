@@ -7,12 +7,17 @@ const ScribeController = lazy(
   () => import("./components/scribe/ScribeController"),
 );
 
+const ScribeProfileSection = lazy(
+  () => import("./components/scribe/ScribeProfileSection"),
+);
+
 const manifest = {
   plugin: "care-eka-scribe-fe",
   routes,
-  extends: ["Scribe"],
+  extends: ["Scribe", "UserProfileSections"],
   components: {
     Scribe: ScribeController,
+    UserProfileSections: ScribeProfileSection,
   },
   adminNavItems: [
     {

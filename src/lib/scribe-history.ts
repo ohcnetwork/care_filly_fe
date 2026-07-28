@@ -1,6 +1,7 @@
 import { getHeaders } from "@/lib/request";
 import { SCRIBE_BASE_URL } from "@/lib/scribe-be";
 import type { ScribeHistoryEntry } from "@/lib/types/scribe";
+import { patchWebmDuration } from "@/lib/utils";
 
 /**
  * Server-side scribe history client.
@@ -77,16 +78,23 @@ export async function clearHistory(): Promise<void> {
 export async function uploadHistoryAudio(
   sessionId: string,
   audio: Blob,
+  durationSeconds?: number,
 ): Promise<void> {
   if (!SCRIBE_BASE_URL) return;
   const headers = getHeaders();
   headers.delete("Content-Type"); // let the browser set the multipart boundary
   const form = new FormData();
+  const durationMs = (durationSeconds ?? 0) * 1000;
+  const patched =
+    durationMs > 0 ? await patchWebmDuration(audio, durationMs) : audio;
   form.append(
     "file",
-    audio,
+    patched,
     `recording.${audio.type.includes("mp4") ? "m4a" : "webm"}`,
   );
+  if (durationSeconds && durationSeconds > 0) {
+    form.append("duration", String(Math.round(durationSeconds)));
+  }
   const response = await fetch(
     `${SCRIBE_BASE_URL}/history/session/${sessionId}/audio`,
     { method: "POST", headers, body: form },

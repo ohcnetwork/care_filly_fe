@@ -13,16 +13,17 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { fetchHistoryAudio } from "@/lib/scribe-history";
 import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import { applyFieldToState, collectFieldsToFill } from "@/lib/structured/fill";
 import type { ScribeHistoryEntry, ScribeResult } from "@/lib/types/scribe";
 import { cn } from "@/lib/utils";
 
 import { HistoryPanel } from "@/components/scribe/HistoryPanel";
-import { TncDialog } from "@/components/scribe/TncDialog";
 
 import { useQuota } from "@/hooks/useQuota";
 import { useScribe } from "@/hooks/useScribe";
+import { useScribePreference } from "@/hooks/useScribePreference";
 import { useTranslation } from "@/hooks/useTranslation";
 
 interface ScribeControllerProps {
@@ -58,14 +59,15 @@ function ScribeControllerInner({
   const [expanded, setExpanded] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [tncOpen, setTncOpen] = useState(false);
   const appliedRef = useRef(false);
   const fillTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [filledCount, setFilledCount] = useState(0);
 
-  // Per-user/facility quota gating (mirrors care_scribe_fe).
+  // Per-user/facility quota gating (mirrors care_scribe_fe) + the user's
+  // own scribe opt-in from the profile page.
   const facilityId = getFacilityIdFromUrl();
   const quota = useQuota(facilityId);
+  const preference = useScribePreference();
 
   const clearFillTimeouts = useCallback(() => {
     fillTimeoutsRef.current.forEach(clearTimeout);
@@ -245,10 +247,6 @@ function ScribeControllerInner({
   };
 
   const handleStart = async () => {
-    if (!quota.tncAccepted) {
-      setTncOpen(true);
-      return;
-    }
     await beginRecording();
   };
 
@@ -263,6 +261,27 @@ function ScribeControllerInner({
     setTranscriptMinimized(false);
   };
 
+  /** Re-run the whole pipeline on a past entry's stored recording. */
+  const handleReprocessFromHistory = useCallback(
+    async (entry: ScribeHistoryEntry) => {
+      setHistoryOpen(false);
+      clearFillTimeouts();
+      appliedRef.current = false;
+      setFilledCount(0);
+      setLiveTranscript("");
+      setTranscriptMinimized(false);
+      const audio = await fetchHistoryAudio(entry.id);
+      if (!audio) {
+        console.warn("[Scribe] No stored audio for history entry", entry.id);
+        return;
+      }
+      await scribe.processAudioFile(audio, {
+        durationSeconds: entry.duration,
+      });
+    },
+    [clearFillTimeouts, scribe],
+  );
+
   useEffect(() => clearFillTimeouts, [clearFillTimeouts]);
 
   const duration = scribe.duration;
@@ -272,9 +291,15 @@ function ScribeControllerInner({
 
   // Idle state — floating pill FAB (bottom-right) + history
   if (scribe.status === "idle") {
-    // Scribe is only offered when the facility has an active quota
-    // (standalone deployments without quota endpoints stay enabled).
-    if (quota.isLoading || !quota.scribeEnabled) {
+    // Scribe is only offered when the facility has an active quota AND
+    // the user has enabled scribe (+ consented) from their profile page.
+    // Standalone deployments without quota/preference endpoints stay enabled.
+    if (
+      quota.isLoading ||
+      !quota.scribeEnabled ||
+      preference.isLoading ||
+      !preference.enabled
+    ) {
       return null;
     }
 
@@ -282,21 +307,16 @@ function ScribeControllerInner({
 
     return (
       <div className="scribe-pop-in fixed right-4 bottom-2 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-4">
-        <TncDialog
-          open={tncOpen}
-          tnc={quota.tnc}
-          onAccept={async () => {
-            await quota.acceptTnc();
-            setTncOpen(false);
-            void beginRecording();
-          }}
-          onClose={() => setTncOpen(false)}
-        />
         <HistoryPanel
           open={historyOpen}
           onOpenChange={setHistoryOpen}
           onApply={
             formState && setFormState ? handleApplyFromHistory : undefined
+          }
+          onReprocess={
+            quota.quotaExceeded
+              ? undefined
+              : (entry) => void handleReprocessFromHistory(entry)
           }
         />
         <div className="flex items-center gap-2">
