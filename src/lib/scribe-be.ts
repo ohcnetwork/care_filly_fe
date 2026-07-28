@@ -1,7 +1,7 @@
 // Scribe backend resolution (in priority order):
 // 1. REACT_SCRIBE_BE_URL env — explicit override (standalone FastAPI server)
-// 2. window.CARE_API_URL + /api/care_scribe_be — CARE backend plugin, same
-//    origin/auth as the rest of the CARE API (care_scribe_fe convention)
+// 2. window.CARE_API_URL + /api/care_filly — CARE backend plugin, same
+//    origin/auth as the rest of the CARE API (care_filly_fe convention)
 const SCRIBE_BE_OVERRIDE = (import.meta.env.REACT_SCRIBE_BE_URL || "").replace(
   /\/$/,
   "",
@@ -18,7 +18,7 @@ export function resolveScribeBackend(): string | null {
     typeof window !== "undefined" ? window.CARE_API_URL : undefined;
   if (careApiUrl) {
     const base = careApiUrl.replace(/\/$/, "");
-    return `${base}/api/care_scribe_be/v1`;
+    return `${base}/api/care_filly/v1`;
   }
   return null;
 }

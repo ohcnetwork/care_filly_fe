@@ -41,11 +41,11 @@ const PROCESSING_STEPS = [
 
 export function ScribeController(props: ScribeControllerProps) {
   // Tailwind utilities in this plugin are scoped under
-  // `.care-scribie-fe-container` (see index.css). The rendered output must
+  // `.care-filly-fe-container` (see index.css). The rendered output must
   // live inside that container for classes (fixed positioning, gradients, etc.)
   // and theme tokens to apply.
   return (
-    <div className="care-scribie-fe-container">
+    <div className="care-filly-fe-container">
       <ScribeControllerInner {...props} />
     </div>
   );

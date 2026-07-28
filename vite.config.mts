@@ -8,7 +8,7 @@ export default defineConfig({
   envPrefix: "REACT_",
   plugins: [
     federation({
-      name: "care_scribie_fe",
+      name: "care_filly_fe",
       filename: "remoteEntry.js",
       exposes: {
         "./manifest": "./src/manifest.ts",

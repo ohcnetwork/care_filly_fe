@@ -13,9 +13,9 @@ const QuotaUsagePage = lazy(() =>
 
 function AdminPage({ children }: { children: React.ReactNode }) {
   // Tailwind utilities in this plugin are scoped under
-  // `.care-scribie-fe-container` (see index.css).
+  // `.care-filly-fe-container` (see index.css).
   return (
-    <div className="care-scribie-fe-container">
+    <div className="care-filly-fe-container">
       <Suspense fallback={null}>{children}</Suspense>
     </div>
   );

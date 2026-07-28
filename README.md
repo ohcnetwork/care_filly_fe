@@ -1,8 +1,8 @@
-# care_scribie_fe
+# care_filly_fe
 
 > AI-powered clinical documentation (Scribe) plugin for the [CARE](https://github.com/ohcnetwork/care_fe) EMR.
 
-`care_scribie_fe` is a **Care Frontend plugin** that brings AI **Scribe** capabilities to OHCN's EMR. A clinician records a consultation, the audio is transcribed and structured by a scribe backend implementing the open **MedScribe Alliance protocol** (e.g. [care_scribe_be](https://github.com/ohcnetwork/care_scribe_be)), and the extracted values are automatically matched and filled into CARE questionnaire forms — saving manual data entry and letting clinicians focus on the patient.
+`care_filly_fe` is a **Care Frontend plugin** that brings AI **Scribe** capabilities to OHCN's EMR. A clinician records a consultation, the audio is transcribed and structured by a scribe backend implementing the open **MedScribe Alliance protocol** (e.g. [care_filly](https://github.com/ohcnetwork/care_filly)), and the extracted values are automatically matched and filled into CARE questionnaire forms — saving manual data entry and letting clinicians focus on the patient.
 
 It runs as a **Vite Module Federation remote** loaded by [`care_fe`](https://github.com/ohcnetwork/care_fe) and adds a floating microphone control that records, transcribes, and auto-fills forms.
 
@@ -25,7 +25,7 @@ care_fe (host)  ──loads remoteEntry.js──▶  manifest.ts  ──extends 
                                                                                      │
                                           useScribe + template-builder ◀─────────────┘
                                                      │
-                                   med-scribe-alliance-ts-sdk ──▶ Scribe backend (care_scribe_be)
+                                   med-scribe-alliance-ts-sdk ──▶ Scribe backend (care_filly)
 ```
 
 1. `care_fe` loads this plugin as a federated remote and renders `ScribeController` on questionnaire forms.
@@ -44,7 +44,7 @@ care_fe (host)  ──loads remoteEntry.js──▶  manifest.ts  ──extends 
 
 - **Node.js ≥ 22.9.0**
 - A running **[care_fe](https://github.com/ohcnetwork/care_fe)** instance configured to load this plugin
-- A **scribe backend** — either the [care_scribe_be](https://github.com/ohcnetwork/care_scribe_be) CARE plugin (auto-detected via `window.CARE_API_URL`) or a standalone server set via `REACT_SCRIBE_BE_URL`
+- A **scribe backend** — either the [care_filly](https://github.com/ohcnetwork/care_filly) CARE plugin (auto-detected via `window.CARE_API_URL`) or a standalone server set via `REACT_SCRIBE_BE_URL`
 
 ### Setup
 
@@ -75,7 +75,7 @@ Register the plugin in care_fe via admin pannel:
 ```json
 {
   "url": "http://localhost:10122/assets/remoteEntry.js",
-  "name": "care_scribie_fe"
+  "name": "care_filly_fe"
 }
 ```
 

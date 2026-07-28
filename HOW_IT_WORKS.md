@@ -1,6 +1,6 @@
-# How care_scribie_fe Works
+# How care_filly_fe Works
 
-`care_scribie_fe` is a **Care Frontend plugin** that adds AI-powered clinical documentation (Scribe) to OHCN's EMR. It runs as a **module federation remote** inside [care_fe](https://github.com/ohcnetwork/care_fe) and extends the host application with a floating **Scribe** component that records consultations and auto-fills questionnaire forms.
+`care_filly_fe` is a **Care Frontend plugin** that adds AI-powered clinical documentation (Scribe) to OHCN's EMR. It runs as a **module federation remote** inside [care_fe](https://github.com/ohcnetwork/care_fe) and extends the host application with a floating **Scribe** component that records consultations and auto-fills questionnaire forms.
 
 ---
 
@@ -14,14 +14,14 @@ flowchart TB
         Form["Questionnaire form state"]
     end
 
-    subgraph care_scribie_fe["care_scribie_fe (remote)"]
+    subgraph care_filly_fe["care_filly_fe (remote)"]
         Manifest["manifest.ts"]
         ScribeController["ScribeController"]
         useScribe["useScribe hook"]
         TemplateBuilder["template-builder"]
     end
 
-    subgraph backend["Scribe backend (care_scribe_be)"]
+    subgraph backend["Scribe backend (care_filly)"]
         VoiceAPI["MedScribe Alliance API"]
     end
 
@@ -37,7 +37,7 @@ flowchart TB
 | Layer               | Role                                                                          |
 | ------------------- | ----------------------------------------------------------------------------- |
 | **care_fe**         | Host app; loads plugins, renders extended components, owns form state         |
-| **care_scribie_fe** | Remote microfrontend; exposes manifest + Scribe UI                            |
+| **care_filly_fe**   | Remote microfrontend; exposes manifest + Scribe UI                            |
 | **MedScribe SDK**   | Handles mic capture, chunked upload, transcription, and structured extraction |
 
 ---
@@ -153,7 +153,7 @@ Central hook wrapping `med-scribe-alliance-ts-sdk`.
 
 | Variable                 | Purpose                                                                                           |
 | ------------------------ | ------------------------------------------------------------------------------------------------- |
-| `REACT_SCRIBE_BE_URL`    | Explicit scribe backend override; when unset, `window.CARE_API_URL + /api/care_scribe_be` is used |
+| `REACT_SCRIBE_BE_URL`    | Explicit scribe backend override; when unset, `window.CARE_API_URL + /api/care_filly` is used |
 | `REACT_SCRIBE_LANGUAGES` | Spoken language hint (comma-separated ISO codes, e.g. `ta`)                                       |
 
 > **Important:** When running inside care_fe, CORS is checked against the **host page origin** (e.g. `http://localhost:4000`), not the plugin's `:10122` preview URL. Authentication uses the logged-in CARE user's JWT (`care_access_token` in localStorage).
@@ -268,7 +268,7 @@ The plugin is registered in care_fe via `care-package.lock`:
 
 ```json
 {
-  "package": "ohcnetwork/care_scribie_fe_fe",
+  "package": "ohcnetwork/care_filly_fe",
   "branch": "main"
 }
 ```

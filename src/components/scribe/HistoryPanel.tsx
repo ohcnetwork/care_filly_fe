@@ -121,7 +121,7 @@ export function HistoryPanel({
         className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
       >
         {/* Header */}
-        <SheetHeader className="care-scribie-fe-container space-y-1 border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-4 py-4 text-left">
+        <SheetHeader className="care-filly-fe-container space-y-1 border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-4 py-4 text-left">
           <SheetTitle className="flex items-center gap-2 text-base">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white">
               <History className="h-3.5 w-3.5" />

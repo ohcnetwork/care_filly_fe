@@ -1,6 +1,6 @@
 @config '../tailwind.config.js';
 
-.care-scribie-fe-container {
+.care-filly-fe-container {
   @import "tailwindcss";
 }
 

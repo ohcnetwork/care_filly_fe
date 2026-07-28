@@ -59,7 +59,7 @@ export default function ScribeProfileSection({
   };
 
   return (
-    <div className={`care-scribie-fe-container ${className ?? ""}`}>
+    <div className={`care-filly-fe-container ${className ?? ""}`}>
       <TncDialog
         open={tncOpen}
         tnc={pref.tnc}
