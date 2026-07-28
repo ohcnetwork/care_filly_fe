@@ -2,6 +2,7 @@ import {
   CheckCircle2,
   ChevronDown,
   FileText,
+  History,
   Loader2,
   Mic,
   Pause,
@@ -12,10 +13,15 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import { applyFieldToState, collectFieldsToFill } from "@/lib/structured/fill";
-import type { ScribeResult } from "@/lib/types/scribe";
+import type { ScribeHistoryEntry, ScribeResult } from "@/lib/types/scribe";
 import { cn } from "@/lib/utils";
 
+import { HistoryPanel } from "@/components/scribe/HistoryPanel";
+import { TncDialog } from "@/components/scribe/TncDialog";
+
+import { useQuota } from "@/hooks/useQuota";
 import { useScribe } from "@/hooks/useScribe";
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -51,9 +57,15 @@ function ScribeControllerInner({
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [tncOpen, setTncOpen] = useState(false);
   const appliedRef = useRef(false);
   const fillTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [filledCount, setFilledCount] = useState(0);
+
+  // Per-user/facility quota gating (mirrors care_scribe_fe).
+  const facilityId = getFacilityIdFromUrl();
+  const quota = useQuota(facilityId);
 
   const clearFillTimeouts = useCallback(() => {
     fillTimeoutsRef.current.forEach(clearTimeout);
@@ -106,6 +118,20 @@ function ScribeControllerInner({
       }
     },
     [formState, setFormState],
+  );
+
+  /** Re-fill the form from a past session picked in the history panel. */
+  const handleApplyFromHistory = useCallback(
+    (entry: ScribeHistoryEntry) => {
+      clearFillTimeouts();
+      appliedRef.current = false; // applyResults is one-shot per recording
+      setHistoryOpen(false);
+      void applyResults({
+        transcript: entry.transcript,
+        structuredData: entry.structuredData,
+      });
+    },
+    [applyResults, clearFillTimeouts],
   );
 
   const [liveTranscript, setLiveTranscript] = useState<string>("");
@@ -209,12 +235,21 @@ function ScribeControllerInner({
     };
   }, [scribe.status]);
 
-  const handleStart = async () => {
+  const beginRecording = async () => {
     clearFillTimeouts();
     appliedRef.current = false;
     setFilledCount(0);
     setTranscriptMinimized(false);
+    setHistoryOpen(false);
     await scribe.startRecording();
+  };
+
+  const handleStart = async () => {
+    if (!quota.tncAccepted) {
+      setTncOpen(true);
+      return;
+    }
+    await beginRecording();
   };
 
   const handleStop = async () => {
@@ -235,35 +270,93 @@ function ScribeControllerInner({
   const secs = duration % 60;
   const timeStr = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 
-  // Idle state — floating pill FAB (bottom-right)
+  // Idle state — floating pill FAB (bottom-right) + history
   if (scribe.status === "idle") {
+    // Scribe is only offered when the facility has an active quota
+    // (standalone deployments without quota endpoints stay enabled).
+    if (quota.isLoading || !quota.scribeEnabled) {
+      return null;
+    }
+
+    const exceeded = quota.quotaExceeded;
+
     return (
-      <div className="scribe-pop-in fixed right-4 bottom-4 z-9999 sm:right-6 sm:bottom-6">
-        <button
-          onClick={handleStart}
-          disabled={scribe.isStarting}
-          className={cn(
-            "group relative flex items-center gap-2 overflow-hidden rounded-full bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 py-3 pr-5 pl-4 text-white shadow-lg shadow-primary-700/30 transition-all",
-            scribe.isStarting
-              ? "opacity-90"
-              : "hover:shadow-xl hover:shadow-primary-700/40 hover:brightness-110 active:scale-95",
-          )}
-          title={scribe.isStarting ? t("starting") : t("start_ai_scribe")}
-        >
-          {/* soft rotating glow */}
-          <span className="scribe-spin-slow pointer-events-none absolute -inset-16 scale-150 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.35),transparent)] opacity-60" />
-          <span className="relative flex h-6 w-6 items-center justify-center">
-            {scribe.isStarting ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Mic className="h-5 w-5" />
+      <div className="scribe-pop-in fixed right-4 bottom-2 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-4">
+        <TncDialog
+          open={tncOpen}
+          tnc={quota.tnc}
+          onAccept={async () => {
+            await quota.acceptTnc();
+            setTncOpen(false);
+            void beginRecording();
+          }}
+          onClose={() => setTncOpen(false)}
+        />
+        <HistoryPanel
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+          onApply={
+            formState && setFormState ? handleApplyFromHistory : undefined
+          }
+        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setHistoryOpen((prev) => !prev)}
+            className={cn(
+              "flex h-10 w-10 items-center justify-center rounded-full border bg-white text-gray-500 shadow-md transition-all hover:text-primary-700 hover:shadow-lg active:scale-95",
+              historyOpen
+                ? "border-primary-200 text-primary-700"
+                : "border-gray-100",
             )}
-          </span>
-          <span className="relative text-sm font-semibold">
-            {scribe.isStarting ? t("starting") : t("ai_scribe")}
-          </span>
-          <Sparkles className="relative h-4 w-4 opacity-80" />
-        </button>
+            title={t("scribe_history")}
+            //TODO: add hidden when no history
+          >
+            <History className="h-4.5 w-4.5" />
+          </button>
+          <button
+            onClick={handleStart}
+            disabled={scribe.isStarting || Boolean(exceeded)}
+            className={cn(
+              "group relative flex items-center gap-2 overflow-hidden rounded-full py-3 pr-5 pl-4 text-white shadow-lg transition-all",
+              exceeded
+                ? "cursor-not-allowed bg-gray-400 shadow-gray-400/30"
+                : "bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 shadow-primary-700/30",
+              !exceeded &&
+                (scribe.isStarting
+                  ? "opacity-90"
+                  : "hover:shadow-xl hover:shadow-primary-700/40 hover:brightness-110 active:scale-95"),
+            )}
+            title={
+              exceeded
+                ? exceeded === "facility"
+                  ? t("facility_quota_exceeded")
+                  : t("monthly_quota_exceeded")
+                : scribe.isStarting
+                  ? t("starting")
+                  : t("start_ai_scribe")
+            }
+          >
+            {/* soft rotating glow */}
+            {!exceeded && (
+              <span className="scribe-spin-slow pointer-events-none absolute -inset-16 scale-150 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.35),transparent)] opacity-60" />
+            )}
+            <span className="relative flex h-6 w-6 items-center justify-center">
+              {scribe.isStarting ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Mic className="h-5 w-5" />
+              )}
+            </span>
+            <span className="relative text-sm font-semibold">
+              {exceeded
+                ? t("quota_exceeded")
+                : scribe.isStarting
+                  ? t("starting")
+                  : t("ai_scribe")}
+            </span>
+            {!exceeded && <Sparkles className="relative h-4 w-4 opacity-80" />}
+          </button>
+        </div>
       </div>
     );
   }

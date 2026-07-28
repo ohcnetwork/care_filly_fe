@@ -1,4 +1,5 @@
-import { lazy } from "react";
+import { Mic } from "lucide-react";
+import { createElement, lazy } from "react";
 
 import routes from "./routes";
 
@@ -13,6 +14,13 @@ const manifest = {
   components: {
     Scribe: ScribeController,
   },
+  adminNavItems: [
+    {
+      url: "/admin/scribe/quotas",
+      name: "Scribe Quotas",
+      icon: createElement(Mic, { className: "h-4 w-4" }),
+    },
+  ],
   devices: [],
 } as const;
 

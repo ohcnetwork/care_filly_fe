@@ -5,10 +5,13 @@ import {
 } from "med-scribe-alliance-ts-sdk";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { SCRIBE_BASE_URL } from "@/lib/scribe-be";
 import {
   createShimmedWorkerBlobUrl,
   installFetchCredentialsShim,
 } from "@/lib/scribe-fetch-shim";
+import { uploadHistoryAudio } from "@/lib/scribe-history";
+import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import {
   buildTemplateDescription,
   extractFormFields,
@@ -27,29 +30,8 @@ const SCRIBE_LANGUAGES: string[] = (
   .map((code: string) => code.trim())
   .filter(Boolean);
 
-// Scribe backend resolution (in priority order):
-// 1. REACT_SCRIBE_BE_URL env — explicit override (standalone FastAPI server)
-// 2. window.CARE_API_URL + /api/care_scribe_be — CARE backend plugin, same
-//    origin/auth as the rest of the CARE API (care_scribe_fe convention)
-const SCRIBE_BE_OVERRIDE = (import.meta.env.REACT_SCRIBE_BE_URL || "").replace(
-  /\/$/,
-  "",
-);
-
-function resolveScribeBackend(): string | null {
-  if (SCRIBE_BE_OVERRIDE) {
-    return `${SCRIBE_BE_OVERRIDE}/v1`;
-  }
-  const careApiUrl =
-    typeof window !== "undefined" ? window.CARE_API_URL : undefined;
-  if (careApiUrl) {
-    const base = careApiUrl.replace(/\/$/, "");
-    return `${base}/api/care_scribe_be/v1`;
-  }
-  return null;
-}
-
-const SCRIBE_BASE_URL = resolveScribeBackend();
+// Scribe backend resolution lives in @/lib/scribe-be (shared with the
+// quota API).
 
 // The SDK sends `credentials: "include"` on every request, but the CARE API
 // does not respond with `Access-Control-Allow-Credentials: true` — browsers
@@ -153,6 +135,13 @@ export function useScribe({
   const workerUrlRef = useRef<string | null>(null);
   const initPromiseRef = useRef<Promise<ScribeClient> | null>(null);
   const callbacksRegisteredRef = useRef(false);
+
+  // Parallel local recording for the history panel. The SDK uploads
+  // chunks internally and never exposes the audio, so we run our own
+  // MediaRecorder and upload the blob to the history row afterwards.
+  const localRecorderRef = useRef<MediaRecorder | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const localChunksRef = useRef<Blob[]>([]);
 
   // Authenticate with the CARE user's JWT — same convention as care_scribe_fe.
   const defaultToken = getCareAccessToken();
@@ -291,6 +280,15 @@ export function useScribe({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       void instanceRef.current?.reset();
+      // Release any in-flight local capture so the mic indicator clears.
+      if (
+        localRecorderRef.current &&
+        localRecorderRef.current.state !== "inactive"
+      ) {
+        localRecorderRef.current.onstop = null;
+        localRecorderRef.current.stop();
+      }
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
       if (workerUrlRef.current?.startsWith("blob:")) {
         URL.revokeObjectURL(workerUrlRef.current);
         workerUrlRef.current = null;
@@ -320,6 +318,91 @@ export function useScribe({
     }
   }, []);
 
+  // ── Local audio capture (uploaded to the server-side history) ──────────
+
+  const startLocalCapture = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false,
+      });
+      const mimeType = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+      ].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined,
+      );
+      localChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) localChunksRef.current.push(event.data);
+      };
+      recorder.start(1000);
+      localRecorderRef.current = recorder;
+      localStreamRef.current = stream;
+    } catch (err) {
+      // Non-fatal — history entries are still recorded, just without audio.
+      if (DEBUG) console.warn("[Scribe] Local audio capture failed:", err);
+    }
+  }, []);
+
+  /** Stop the local recorder and return the captured audio, if any. */
+  const stopLocalCapture = useCallback((): Promise<Blob | null> => {
+    const recorder = localRecorderRef.current;
+    const stream = localStreamRef.current;
+    localRecorderRef.current = null;
+    localStreamRef.current = null;
+
+    if (!recorder || recorder.state === "inactive") {
+      stream?.getTracks().forEach((t) => t.stop());
+      localChunksRef.current = [];
+      return Promise.resolve(null);
+    }
+
+    return new Promise((resolve) => {
+      recorder.onstop = () => {
+        stream?.getTracks().forEach((t) => t.stop());
+        const chunks = localChunksRef.current;
+        localChunksRef.current = [];
+        resolve(
+          chunks.length
+            ? new Blob(chunks, { type: recorder.mimeType || "audio/webm" })
+            : null,
+        );
+      };
+      recorder.stop();
+    });
+  }, []);
+
+  const discardLocalCapture = useCallback(() => {
+    const recorder = localRecorderRef.current;
+    localRecorderRef.current = null;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+    localStreamRef.current = null;
+    localChunksRef.current = [];
+  }, []);
+
+  /** Attach the captured recording to the server-written history row. */
+  const uploadCapturedAudio = useCallback(
+    async (sessionId: string | null) => {
+      try {
+        const audio = await stopLocalCapture();
+        if (!audio || !sessionId) return;
+        await uploadHistoryAudio(sessionId, audio);
+      } catch (err) {
+        // Non-fatal — the history entry itself is written by the backend.
+        if (DEBUG) console.warn("[Scribe] History audio upload failed:", err);
+      }
+    },
+    [stopLocalCapture],
+  );
+
   const startRecording = useCallback(
     async (options?: {
       encounterId?: string;
@@ -336,10 +419,15 @@ export function useScribe({
         // Send the form schema with the session — the backend runs the
         // extraction directly, no pre-registered template needed.
         const templateIds = options?.templateIds || ["care_form"];
+        const facilityId = getFacilityIdFromUrl();
         let additionalData: Record<string, unknown> | undefined =
           options?.encounterId
             ? { encounter_id: options.encounterId }
             : undefined;
+        if (facilityId) {
+          // Used by the backend for per-user/facility quota enforcement.
+          additionalData = { ...additionalData, facility_id: facilityId };
+        }
         const fields = formStateProp ? extractFormFields(formStateProp) : [];
         if (fields.length > 0) {
           const { desc, example } = buildTemplateDescription(fields);
@@ -367,6 +455,7 @@ export function useScribe({
         }
 
         sessionIdRef.current = recordResult.data.session_id || null;
+        void startLocalCapture();
         updateStatus("recording");
         startTimer();
       } catch (err) {
@@ -379,13 +468,23 @@ export function useScribe({
         setIsStarting(false);
       }
     },
-    [ensureInstance, formStateProp, updateStatus, startTimer, onError],
+    [
+      ensureInstance,
+      formStateProp,
+      updateStatus,
+      startTimer,
+      startLocalCapture,
+      onError,
+    ],
   );
 
   const pauseRecording = useCallback(() => {
     const client = instanceRef.current;
     if (client) {
       client.pauseRecording();
+      if (localRecorderRef.current?.state === "recording") {
+        localRecorderRef.current.pause();
+      }
       stopTimer(true); // save accumulated time before pausing
       updateStatus("paused");
     }
@@ -395,6 +494,9 @@ export function useScribe({
     const client = instanceRef.current;
     if (client) {
       client.resumeRecording();
+      if (localRecorderRef.current?.state === "paused") {
+        localRecorderRef.current.resume();
+      }
       startTimer();
       updateStatus("recording");
     }
@@ -405,7 +507,7 @@ export function useScribe({
       const client = instanceRef.current;
       if (!client) return;
 
-      stopTimer();
+      stopTimer(true); // save accumulated time for the history entry
       updateStatus("processing");
 
       const tStop = performance.now();
@@ -516,16 +618,31 @@ export function useScribe({
       setResult(scribeResult);
       updateStatus("completed");
       onResult?.(scribeResult);
+
+      // The backend wrote the history row during finalize — attach the
+      // locally captured audio to it now.
+      void uploadCapturedAudio(sessionIdRef.current);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to process recording";
       setError(message);
       updateStatus("failed");
       onError?.(err instanceof Error ? err : new Error(message));
+
+      // Best-effort: a failed row may still exist server-side.
+      void uploadCapturedAudio(sessionIdRef.current);
     }
-  }, [stopTimer, updateStatus, onTranscript, onResult, onError]);
+  }, [
+    stopTimer,
+    updateStatus,
+    onTranscript,
+    onResult,
+    onError,
+    uploadCapturedAudio,
+  ]);
 
   const cancelRecording = useCallback(async () => {
+    discardLocalCapture();
     try {
       const client = instanceRef.current;
       if (client) await client.cancelSession();
@@ -538,9 +655,10 @@ export function useScribe({
       accumulatedRef.current = 0;
       updateStatus("idle");
     }
-  }, [stopTimer, updateStatus]);
+  }, [discardLocalCapture, stopTimer, updateStatus]);
 
   const reset = useCallback(async () => {
+    discardLocalCapture();
     try {
       const client = instanceRef.current;
       if (client) await client.reset();
@@ -560,7 +678,7 @@ export function useScribe({
     } catch {
       updateStatus("idle");
     }
-  }, [stopTimer, updateStatus]);
+  }, [discardLocalCapture, stopTimer, updateStatus]);
 
   const updateAccessToken = useCallback((newToken: string) => {
     tokenRef.current = newToken;
