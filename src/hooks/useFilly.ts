@@ -7,7 +7,7 @@ import {
   getSessionStatus,
   uploadChunk,
 } from "@/lib/filly-api";
-import { VadRecorder } from "@/lib/filly-engine";
+import { VadRecorder, segmentAudioBlob } from "@/lib/filly-engine";
 import { uploadHistoryAudio } from "@/lib/filly-history";
 import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import {
@@ -415,7 +415,10 @@ export function useFilly({
         });
         sessionIdRef.current = session.session_id;
 
-        await uploadChunk(session.session_id, 0, audio);
+        const chunks = await segmentAudioBlob(audio);
+        for (let index = 0; index < chunks.length; index++) {
+          await uploadChunk(session.session_id, index, chunks[index]);
+        }
         await endSession(session.session_id);
         await awaitSessionResult(session.session_id);
 

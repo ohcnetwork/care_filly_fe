@@ -1,4 +1,4 @@
-import { MicVAD, utils } from "@ricky0123/vad-web";
+import { MicVAD, NonRealTimeVAD, utils } from "@ricky0123/vad-web";
 
 /**
  * In-house voice-activity-detection recorder.
@@ -23,6 +23,9 @@ const DEBUG = import.meta.env.DEV;
 // avoids uploading coughs/clicks as their own chunk.
 const MIN_UTTERANCE_SECONDS = 0.4;
 const VAD_SAMPLE_RATE = 16000;
+// Hard cap per uploaded chunk. Real-time ASR backends (e.g. Sarvam Saaras)
+// reject audio longer than 30s, so keep every chunk safely under that.
+const MAX_CHUNK_SECONDS = 25;
 
 const RECORDER_MIME_CANDIDATES = [
   "audio/webm;codecs=opus",
@@ -190,4 +193,79 @@ export class VadRecorder {
     this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
   }
+}
+
+// ── offline segmentation (re-run of stored recordings) ─────────────────────
+
+/** Decode any browser-supported audio blob to a 16 kHz mono Float32Array. */
+async function decodeToMono16k(blob: Blob): Promise<Float32Array> {
+  const arrayBuffer = await blob.arrayBuffer();
+  const decodeCtx = new AudioContext();
+  let decoded: AudioBuffer;
+  try {
+    // slice(0) hands decodeAudioData its own detached copy of the buffer.
+    decoded = await decodeCtx.decodeAudioData(arrayBuffer.slice(0));
+  } finally {
+    void decodeCtx.close();
+  }
+
+  const frames = Math.max(1, Math.ceil(decoded.duration * VAD_SAMPLE_RATE));
+  const offline = new OfflineAudioContext(1, frames, VAD_SAMPLE_RATE);
+  const source = offline.createBufferSource();
+  source.buffer = decoded;
+  source.connect(offline.destination);
+  source.start();
+  const rendered = await offline.startRendering();
+  return rendered.getChannelData(0);
+}
+
+/** Split a sample buffer into windows no longer than MAX_CHUNK_SECONDS. */
+function* capSegments(samples: Float32Array): Generator<Float32Array> {
+  const maxLen = Math.floor(MAX_CHUNK_SECONDS * VAD_SAMPLE_RATE);
+  if (samples.length <= maxLen) {
+    yield samples;
+    return;
+  }
+  for (let offset = 0; offset < samples.length; offset += maxLen) {
+    yield samples.subarray(offset, Math.min(offset + maxLen, samples.length));
+  }
+}
+
+/**
+ * Segment a pre-recorded audio blob into upload-ready WAV chunks, mirroring
+ * the live pipeline's VAD chunking. Used to re-run stored history recordings:
+ * uploading the whole file as one chunk breaks real-time ASR backends that
+ * cap request duration (Sarvam rejects audio > 30s). Voice-activity segments
+ * keep chunks natural; any overly long utterance is hard-split under the cap.
+ * Falls back to fixed-window slicing if VAD finds no speech.
+ */
+export async function segmentAudioBlob(blob: Blob): Promise<Blob[]> {
+  const mono = await decodeToMono16k(blob);
+  const chunks: Blob[] = [];
+
+  const pushSegment = (segment: Float32Array) => {
+    if (segment.length < MIN_UTTERANCE_SECONDS * VAD_SAMPLE_RATE) return;
+    for (const capped of capSegments(segment)) {
+      chunks.push(new Blob([utils.encodeWAV(capped)], { type: "audio/wav" }));
+    }
+  };
+
+  try {
+    const vad = await NonRealTimeVAD.new();
+    for await (const { audio } of vad.run(mono, VAD_SAMPLE_RATE)) {
+      pushSegment(audio);
+    }
+  } catch (err) {
+    if (DEBUG) console.warn("[Filly] offline VAD failed, using windows:", err);
+  }
+
+  // No speech detected (or VAD failed): fall back to fixed-size windows so
+  // the recording is still transcribed rather than dropped.
+  if (chunks.length === 0) {
+    for (const capped of capSegments(mono)) {
+      chunks.push(new Blob([utils.encodeWAV(capped)], { type: "audio/wav" }));
+    }
+  }
+
+  return chunks;
 }
