@@ -149,6 +149,11 @@ export interface FillyPreference {
   tnc_accepted_date: string | null;
   /** Whether any of the user's facilities has filly enabled. */
   facility_available: boolean;
+  /**
+   * Whether an admin has disabled filly for this user in every facility that
+   * offers it. When true the user cannot re-enable it themselves.
+   */
+  admin_disabled: boolean;
 }
 
 /** Per-user filly opt-in, managed from the profile page. */

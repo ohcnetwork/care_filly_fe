@@ -41,6 +41,8 @@
   "filled_count": "✓ {{n}} filled",
   "filling_form": "Auto-filling the form",
   "filly": "AI Filly",
+  "filly_admin_disabled": "AI Filly disabled by administrator",
+  "filly_admin_disabled_note": "An administrator has turned off AI Filly for your account. Contact your administrator to re-enable it.",
   "filly_disabled": "AI Filly is disabled",
   "filly_disabled_note": "Enable to use AI-assisted transcription on consultation forms.",
   "filly_enabled": "AI Filly is enabled",

@@ -39,6 +39,9 @@ export default function FillyProfileSection({
   // offers filly — otherwise let the user know who to contact instead
   // of silently hiding the section.
   const facilityUnavailable = !pref.isLoading && !pref.facilityAvailable;
+  // An admin has switched this user off in every facility that offers filly;
+  // the user can't turn it back on — only an admin can.
+  const adminDisabled = !pref.isLoading && pref.adminDisabled;
 
   const handleToggle = async (checked: boolean) => {
     setError(null);
@@ -95,6 +98,29 @@ export default function FillyProfileSection({
                 <p className="text-sm text-gray-600">
                   {t("filly_not_enabled_for_facility")}
                 </p>
+              </div>
+            ) : adminDisabled ? (
+              <div className="flex w-full items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                    <Info className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {t("filly_admin_disabled")}
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      {t("filly_admin_disabled_note")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Switch
+                    checked={false}
+                    disabled
+                    aria-label={t("enable_ai_filly")}
+                  />
+                </div>
               </div>
             ) : (
               <div className="flex w-full items-center justify-between gap-4">

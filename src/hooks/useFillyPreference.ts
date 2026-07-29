@@ -5,6 +5,7 @@ import { FillyPreference, fillyPreferenceApi } from "@/lib/quota-api";
 interface UseFillyPreferenceReturn {
   enabled: boolean;
   facilityAvailable: boolean;
+  adminDisabled: boolean;
   tnc: string | undefined;
   tncAccepted: boolean;
   isLoading: boolean;
@@ -55,6 +56,7 @@ export function useFillyPreference(): UseFillyPreferenceReturn {
   return {
     enabled: Boolean(data?.enabled && data?.tnc_accepted),
     facilityAvailable: Boolean(data?.facility_available),
+    adminDisabled: Boolean(data?.admin_disabled),
     tnc: data?.tnc,
     tncAccepted: Boolean(data?.tnc_accepted),
     isLoading,
