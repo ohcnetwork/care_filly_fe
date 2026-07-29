@@ -523,7 +523,6 @@ function ScribeControllerInner({
   if (scribe.status === "idle") {
     // Scribe is only offered when the facility has an active quota AND
     // the user has enabled scribe (+ consented) from their profile page.
-    // Standalone deployments without quota/preference endpoints stay enabled.
     if (
       quota.isLoading ||
       !quota.scribeEnabled ||

@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import {
-  QuotaApiError,
-  ScribePreference,
-  scribePreferenceApi,
-} from "@/lib/quota-api";
-import { SCRIBE_BE_IS_OVERRIDE } from "@/lib/scribe-be";
+import { ScribePreference, scribePreferenceApi } from "@/lib/quota-api";
 
 interface UseScribePreferenceReturn {
   enabled: boolean;
@@ -19,23 +14,14 @@ interface UseScribePreferenceReturn {
   refetch: () => void;
 }
 
-/**
- * Per-user scribe opt-in (set from the profile page). When the backend
- * has no preference endpoint (standalone override deployments), scribe
- * stays enabled.
- */
+/** Per-user scribe opt-in (set from the profile page). */
 export function useScribePreference(): UseScribePreferenceReturn {
   const [data, setData] = useState<ScribePreference | null>(null);
-  const [isLoading, setIsLoading] = useState(!SCRIBE_BE_IS_OVERRIDE);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
   const requestSeq = useRef(0);
 
   const fetchPreference = useCallback(() => {
-    if (SCRIBE_BE_IS_OVERRIDE) {
-      setIsLoading(false);
-      return;
-    }
     const seq = ++requestSeq.current;
     setIsLoading(true);
     scribePreferenceApi
@@ -44,19 +30,12 @@ export function useScribePreference(): UseScribePreferenceReturn {
         if (seq !== requestSeq.current) return;
         setData(response);
         setError(null);
-        setUnavailable(false);
       })
       .catch((err: unknown) => {
         if (seq !== requestSeq.current) return;
-        if (err instanceof QuotaApiError && err.status === 404) {
-          // Backend without preference support — don't brick the plugin.
-          setUnavailable(true);
-          setError(null);
-        } else {
-          setError(
-            err instanceof Error ? err.message : "Failed to load preference",
-          );
-        }
+        setError(
+          err instanceof Error ? err.message : "Failed to load preference",
+        );
       })
       .finally(() => {
         if (seq === requestSeq.current) setIsLoading(false);
@@ -73,13 +52,11 @@ export function useScribePreference(): UseScribePreferenceReturn {
     setData(response);
   }, []);
 
-  const bypassed = SCRIBE_BE_IS_OVERRIDE || unavailable;
-
   return {
-    enabled: bypassed || Boolean(data?.enabled && data?.tnc_accepted),
-    facilityAvailable: bypassed || Boolean(data?.facility_available),
+    enabled: Boolean(data?.enabled && data?.tnc_accepted),
+    facilityAvailable: Boolean(data?.facility_available),
     tnc: data?.tnc,
-    tncAccepted: bypassed || Boolean(data?.tnc_accepted),
+    tncAccepted: Boolean(data?.tnc_accepted),
     isLoading,
     error,
     setEnabled,

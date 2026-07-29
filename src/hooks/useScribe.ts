@@ -221,7 +221,7 @@ export function useScribe({
     initPromiseRef.current = (async () => {
       if (!SCRIBE_BASE_URL) {
         throw new Error(
-          "No scribe backend configured — set REACT_SCRIBE_BE_URL or run inside CARE (window.CARE_API_URL).",
+          "No scribe backend configured — window.CARE_API_URL is not set (plugin must run inside CARE).",
         );
       }
 

@@ -10,11 +10,12 @@ It runs as a **Vite Module Federation remote** loaded by [`care_fe`](https://git
 
 ## ✨ What it does
 
-- 🎙️ **Record consultations** — a floating mic button captures the doctor–patient conversation.
-- 📝 **Live transcription** — audio is streamed to the scribe backend via the [`med-scribe-alliance-ts-sdk`](https://www.npmjs.com/package/med-scribe-alliance-ts-sdk) and returned as a transcript.
+- 🎙️ **Record consultations** — a floating mic button captures the doctor–patient conversation; audio is uploaded to the backend in chunks while recording.
+- 📝 **Batch transcription** — when the recording is stopped, the backend transcribes the audio and the plugin polls for the transcript via the [`med-scribe-alliance-ts-sdk`](https://www.npmjs.com/package/med-scribe-alliance-ts-sdk) (there is no live/streaming transcript during recording).
 - 🧠 **Structured extraction** — a dynamic AI template (built from the current form's fields) instructs the model to return structured JSON (vitals, notes, etc.).
 - ⚡ **Auto-fill forms** — extracted values are fuzzy-matched to CARE questionnaire fields and written into the form, then highlighted and scrolled into view for clinician review.
-- 🔌 **Zero-route plugin** — integrates purely as a `Scribe` extension point on questionnaire/encounter forms; it defines no standalone pages.
+- 🕒 **Scribe history** — past sessions (transcript, extracted values, audio) are stored server-side and can be re-applied or re-processed from the history panel.
+- 📊 **Quotas & opt-in** — per-facility/per-user token quotas with admin management pages, and a per-user scribe opt-in (with TnC consent) on the profile/settings page.
 
 ---
 
@@ -29,12 +30,10 @@ care_fe (host)  ──loads remoteEntry.js──▶  manifest.ts  ──extends 
 ```
 
 1. `care_fe` loads this plugin as a federated remote and renders `ScribeController` on questionnaire forms.
-2. The user records a consultation; audio is sent to the **scribe backend** through the **MedScribe Alliance SDK**.
+2. The user records a consultation; audio is uploaded in chunks to the **scribe backend** through the **MedScribe Alliance SDK**.
 3. A **dynamic template** built from the current form's fields tells the AI what JSON to return.
-4. Extracted values are **fuzzy-matched** to question labels and written into CARE form responses.
-5. Filled fields are **highlighted and scrolled into view** for review.
-
-📖 For the full architecture, data shapes, recording lifecycle, and module breakdown, see **[HOW_IT_WORKS.md](./HOW_IT_WORKS.md)**.
+4. When recording stops, the plugin **polls the session** until the transcript and structured results are ready.
+5. Extracted values are **fuzzy-matched** to question labels and written into CARE form responses, then **highlighted and scrolled into view** for review.
 
 ---
 
@@ -44,12 +43,12 @@ care_fe (host)  ──loads remoteEntry.js──▶  manifest.ts  ──extends 
 
 - **Node.js ≥ 22.9.0**
 - A running **[care_fe](https://github.com/ohcnetwork/care_fe)** instance configured to load this plugin
-- A **scribe backend** — either the [care_filly](https://github.com/ohcnetwork/care_filly) CARE plugin (auto-detected via `window.CARE_API_URL`) or a standalone server set via `REACT_SCRIBE_BE_URL`
+- The **[care_filly](https://github.com/ohcnetwork/care_filly)** CARE backend plugin — auto-detected via `window.CARE_API_URL`, served under `/api/care_filly/v1`
 
 ### Setup
 
 ```bash
-# 1. Configure environment (optional — backend is auto-detected inside CARE)
+# 1. Configure environment (optional — e.g. REACT_SCRIBE_LANGUAGES transcription hint)
 cp .env.example .env
 
 # 2. Install dependencies
@@ -70,7 +69,7 @@ npm start
 
 ## 🔗 care_fe registration
 
-Register the plugin in care_fe via admin pannel:
+Register the plugin in care_fe via the admin panel:
 
 ```json
 {
@@ -87,21 +86,27 @@ care_fe resolves the package, loads `remoteEntry.js`, and mounts `ScribeControll
 
 ```text
 src/
-├── manifest.ts              # Plugin manifest (routes, extends, components)
-├── routes.tsx               # Empty routes (reserved for future pages)
+├── manifest.ts              # Plugin manifest (routes, extends, nav items)
+├── routes.tsx               # Admin quota pages + user scribe settings page
 ├── index.tsx                # Module-federation entry + exports
 ├── hooks/
-│   └── useScribe.ts         # MedScribe Alliance SDK integration
+│   ├── useScribe.ts         # MedScribe Alliance SDK integration
+│   ├── useQuota.ts          # Facility/user quota gating
+│   └── useScribePreference.ts # Per-user scribe opt-in
 ├── components/
+│   ├── admin/               # Quota management pages (superuser)
 │   └── scribe/
-│       ├── ScribeController.tsx   # Main UI + form auto-fill
-│       ├── RecordingPanel.tsx
-│       ├── ResultPanel.tsx
-│       └── ScribeButton.tsx
+│       ├── ScribeController.tsx   # Floating widget + form auto-fill
+│       ├── HistoryPanel.tsx       # Past sessions (re-apply / re-run)
+│       ├── ScribeProfileSection.tsx # Profile opt-in section
+│       └── ScribeSettingsPage.tsx   # User settings page
 └── lib/
+    ├── scribe-be.ts         # Backend URL resolution (CARE + /api/care_filly)
     ├── template-builder.ts  # Dynamic extraction prompt from form fields
-    ├── types/scribe.ts
-    └── request.ts           # Care API HTTP helpers (for future use)
+    ├── quota-api.ts         # Quota / preference API client
+    ├── scribe-history.ts    # Server-side history API client
+    ├── structured/          # Structured data matching & form fill
+    └── types/scribe.ts
 ```
 
 ---
@@ -120,4 +125,4 @@ src/
 
 ## 🧩 Tech stack
 
-React 19 · TypeScript · Vite · Module Federation · TailwindCSS · Radix UI · TanStack Query · Jotai · `med-scribe-alliance-ts-sdk`
+React 19 · TypeScript · Vite · Module Federation · TailwindCSS · Radix UI · `med-scribe-alliance-ts-sdk`
