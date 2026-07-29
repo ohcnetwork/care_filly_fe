@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { MyQuotaResponse, ScribeQuota, quotaApi } from "@/lib/quota-api";
+import { FillyQuota, MyQuotaResponse, quotaApi } from "@/lib/quota-api";
 
 interface UseQuotaReturn {
-  quotas: ScribeQuota[] | undefined;
+  quotas: FillyQuota[] | undefined;
   /** Facility-level quota row (user=null), when present. */
-  facilityQuota: ScribeQuota | undefined;
+  facilityQuota: FillyQuota | undefined;
   /** Current user's quota row, when present. */
-  userQuota: ScribeQuota | undefined;
+  userQuota: FillyQuota | undefined;
   tnc: string | undefined;
   tncAccepted: boolean;
-  /** True when scribe should be offered at all for this facility. */
-  scribeEnabled: boolean;
+  /** True when filly should be offered at all for this facility. */
+  fillyEnabled: boolean;
   /** Set when the facility or user has run out of tokens this month. */
   quotaExceeded: "facility" | "user" | null;
   isLoading: boolean;
@@ -21,8 +21,8 @@ interface UseQuotaReturn {
 }
 
 /**
- * Fetches the caller's scribe quota for a facility (mirrors
- * care_scribe_fe's useQuota).
+ * Fetches the caller's filly quota for a facility (mirrors
+ * care_filly_fe's useQuota).
  */
 export function useQuota(facilityId: string | null): UseQuotaReturn {
   const [data, setData] = useState<MyQuotaResponse | null>(null);
@@ -66,7 +66,7 @@ export function useQuota(facilityId: string | null): UseQuotaReturn {
   const facilityQuota = data?.quotas.find((q) => !q.user);
   const userQuota = data?.quotas.find((q) => q.user);
 
-  const scribeEnabled = Boolean(facilityQuota?.allow_scribe);
+  const fillyEnabled = Boolean(facilityQuota?.allow_filly);
 
   let quotaExceeded: "facility" | "user" | null = null;
   if (facilityQuota && facilityQuota.used >= facilityQuota.tokens) {
@@ -81,7 +81,7 @@ export function useQuota(facilityId: string | null): UseQuotaReturn {
     userQuota,
     tnc: data?.tnc,
     tncAccepted: Boolean(data?.tnc_accepted),
-    scribeEnabled,
+    fillyEnabled,
     quotaExceeded,
     isLoading,
     error,

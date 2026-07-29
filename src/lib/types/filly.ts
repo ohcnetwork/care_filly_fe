@@ -1,4 +1,4 @@
-export type ScribeStatus =
+export type FillyStatus =
   | "idle"
   | "recording"
   | "paused"
@@ -6,14 +6,14 @@ export type ScribeStatus =
   | "completed"
   | "failed";
 
-export interface ScribeResult {
+export interface FillyResult {
   transcript?: string;
   templates?: Record<string, unknown>[];
   structuredData?: Record<string, unknown>;
 }
 
-/** A past scribe session, persisted server-side per CARE user. */
-export interface ScribeHistoryEntry {
+/** A past filly session, persisted server-side per CARE user. */
+export interface FillyHistoryEntry {
   id: string;
   sessionId: string | null;
   /** Epoch ms when the recording started. */

@@ -20,20 +20,20 @@ import {
   loadStoredFabOffset,
   resolveCurrentUserId,
 } from "@/lib/fab-position";
-import { fetchHistoryAudio } from "@/lib/scribe-history";
+import { fetchHistoryAudio } from "@/lib/filly-history";
 import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import { applyFieldToState, collectFieldsToFill } from "@/lib/structured/fill";
-import type { ScribeHistoryEntry, ScribeResult } from "@/lib/types/scribe";
+import type { FillyHistoryEntry, FillyResult } from "@/lib/types/filly";
 import { cn } from "@/lib/utils";
 
-import { HistoryPanel } from "@/components/scribe/HistoryPanel";
+import { HistoryPanel } from "@/components/filly/HistoryPanel";
 
+import { useFilly } from "@/hooks/useFilly";
+import { useFillyPreference } from "@/hooks/useFillyPreference";
 import { useQuota } from "@/hooks/useQuota";
-import { useScribe } from "@/hooks/useScribe";
-import { useScribePreference } from "@/hooks/useScribePreference";
 import { useTranslation } from "@/hooks/useTranslation";
 
-interface ScribeControllerProps {
+interface FillyControllerProps {
   formState?: unknown;
   setFormState?: (fn: (state: unknown) => unknown) => void;
 }
@@ -92,7 +92,7 @@ function LongPressIndicator({ progress }: { progress: number }) {
 }
 
 /**
- * Lets the user drag the floating scribe widget away from its default
+ * Lets the user drag the floating filly widget away from its default
  * bottom-right corner — it can otherwise sit on top of a page's own submit
  * button. Position is persisted across sessions (per browser), keyed by
  * the current CARE user id (see `@/lib/fab-position`) so a shared/kiosk
@@ -334,18 +334,18 @@ function useDraggableFab() {
   };
 }
 
-export function ScribeController(props: ScribeControllerProps) {
+export function FillyController(props: FillyControllerProps) {
   return (
     <div className="care-filly-fe-container">
-      <ScribeControllerInner {...props} />
+      <FillyControllerInner {...props} />
     </div>
   );
 }
 
-function ScribeControllerInner({
+function FillyControllerInner({
   formState,
   setFormState,
-}: ScribeControllerProps) {
+}: FillyControllerProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
@@ -354,11 +354,11 @@ function ScribeControllerInner({
   const fillTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [filledCount, setFilledCount] = useState(0);
 
-  // Per-user/facility quota gating (mirrors care_scribe_fe) + the user's
-  // own scribe opt-in from the profile page.
+  // Per-user/facility quota gating (mirrors care_filly_fe) + the user's
+  // own filly opt-in from the profile page.
   const facilityId = getFacilityIdFromUrl();
   const quota = useQuota(facilityId);
-  const preference = useScribePreference();
+  const preference = useFillyPreference();
 
   // Lets the widget be dragged clear of a page's own submit button.
   const fabDrag = useDraggableFab();
@@ -374,10 +374,10 @@ function ScribeControllerInner({
   }, []);
 
   const applyResults = useCallback(
-    async (result: ScribeResult) => {
+    async (result: FillyResult) => {
       if (!setFormState || !formState) return;
       if (!result.structuredData) {
-        console.warn("[Scribe] No structured data to fill");
+        console.warn("[Filly] No structured data to fill");
         return;
       }
       if (appliedRef.current) return;
@@ -390,12 +390,12 @@ function ScribeControllerInner({
         );
 
         if (import.meta.env.DEV) {
-          console.log("[Scribe] Fields to fill:", fieldsToFill);
+          console.log("[Filly] Fields to fill:", fieldsToFill);
         }
 
         if (!fieldsToFill.length) {
           console.warn(
-            "[Scribe] No matching fields found for extracted data",
+            "[Filly] No matching fields found for extracted data",
             result.structuredData,
           );
         }
@@ -415,7 +415,7 @@ function ScribeControllerInner({
         });
       } catch (err) {
         appliedRef.current = false;
-        console.error("[Scribe] Failed to apply results:", err);
+        console.error("[Filly] Failed to apply results:", err);
       }
     },
     [formState, setFormState],
@@ -423,7 +423,7 @@ function ScribeControllerInner({
 
   /** Re-fill the form from a past session picked in the history panel. */
   const handleApplyFromHistory = useCallback(
-    (entry: ScribeHistoryEntry) => {
+    (entry: FillyHistoryEntry) => {
       clearFillTimeouts();
       appliedRef.current = false; // applyResults is one-shot per recording
       setHistoryOpen(false);
@@ -437,26 +437,26 @@ function ScribeControllerInner({
 
   const [liveTranscript, setLiveTranscript] = useState<string>("");
 
-  const scribe = useScribe({
+  const filly = useFilly({
     formState,
     onTranscript: (transcript) => {
       setLiveTranscript(transcript);
     },
     onResult: (result) => {
-      console.log("[Scribe] Result:", result);
+      console.log("[Filly] Result:", result);
       void applyResults(result);
     },
     onError: (error) => {
-      console.error("[Scribe] Error:", error);
+      console.error("[Filly] Error:", error);
     },
   });
 
   // Open the results view automatically once transcription/processing finishes
   useEffect(() => {
-    if (scribe.status === "completed") {
+    if (filly.status === "completed") {
       setExpanded(true);
     }
-  }, [scribe.status]);
+  }, [filly.status]);
 
   // ── Live audio level visualiser ──────────────────────────────────────────
   // Opens a lightweight Web Audio analyser directly against the mic whenever
@@ -469,7 +469,7 @@ function ScribeControllerInner({
   const vizStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
-    if (scribe.status !== "recording") {
+    if (filly.status !== "recording") {
       // tear down
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       audioCtxRef.current?.close();
@@ -534,7 +534,7 @@ function ScribeControllerInner({
       vizStreamRef.current?.getTracks().forEach((t) => t.stop());
       vizStreamRef.current = null;
     };
-  }, [scribe.status]);
+  }, [filly.status]);
 
   const beginRecording = async () => {
     clearFillTimeouts();
@@ -542,7 +542,7 @@ function ScribeControllerInner({
     setFilledCount(0);
     setTranscriptMinimized(false);
     setHistoryOpen(false);
-    await scribe.startRecording();
+    await filly.startRecording();
   };
 
   const handleStart = async () => {
@@ -550,19 +550,19 @@ function ScribeControllerInner({
   };
 
   const handleStop = async () => {
-    await scribe.stopRecording();
+    await filly.stopRecording();
   };
 
   const handleDismiss = async () => {
     clearFillTimeouts();
-    await scribe.reset();
+    await filly.reset();
     setExpanded(false);
     setTranscriptMinimized(false);
   };
 
   /** Re-run the whole pipeline on a past entry's stored recording. */
   const handleReprocessFromHistory = useCallback(
-    async (entry: ScribeHistoryEntry) => {
+    async (entry: FillyHistoryEntry) => {
       setHistoryOpen(false);
       clearFillTimeouts();
       appliedRef.current = false;
@@ -571,30 +571,30 @@ function ScribeControllerInner({
       setTranscriptMinimized(false);
       const audio = await fetchHistoryAudio(entry.id);
       if (!audio) {
-        console.warn("[Scribe] No stored audio for history entry", entry.id);
+        console.warn("[Filly] No stored audio for history entry", entry.id);
         return;
       }
-      await scribe.processAudioFile(audio, {
+      await filly.processAudioFile(audio, {
         durationSeconds: entry.duration,
       });
     },
-    [clearFillTimeouts, scribe],
+    [clearFillTimeouts, filly],
   );
 
   useEffect(() => clearFillTimeouts, [clearFillTimeouts]);
 
-  const duration = scribe.duration;
+  const duration = filly.duration;
   const mins = Math.floor(duration / 60);
   const secs = duration % 60;
   const timeStr = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 
   // Idle state — floating pill FAB (bottom-right) + history
-  if (scribe.status === "idle") {
-    // Scribe is only offered when the facility has an active quota AND
-    // the user has enabled scribe (+ consented) from their profile page.
+  if (filly.status === "idle") {
+    // Filly is only offered when the facility has an active quota AND
+    // the user has enabled filly (+ consented) from their profile page.
     if (
       quota.isLoading ||
-      !quota.scribeEnabled ||
+      !quota.fillyEnabled ||
       preference.isLoading ||
       !preference.enabled
     ) {
@@ -606,7 +606,7 @@ function ScribeControllerInner({
     return (
       <div
         ref={fabDrag.containerRef}
-        className="scribe-pop-in fixed right-4 bottom-2 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-4"
+        className="filly-pop-in fixed right-4 bottom-2 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-4"
         style={fabDragStyle}
         onPointerDown={fabDrag.onPointerDown}
         onClickCapture={fabDrag.onClickCapture}
@@ -635,21 +635,21 @@ function ScribeControllerInner({
                 ? "border-primary-200 text-primary-700"
                 : "border-gray-100",
             )}
-            title={t("scribe_history")}
+            title={t("filly_history")}
             //TODO: add hidden when no history
           >
             <History className="h-4.5 w-4.5" />
           </button>
           <button
             onClick={handleStart}
-            disabled={scribe.isStarting || Boolean(exceeded)}
+            disabled={filly.isStarting || Boolean(exceeded)}
             className={cn(
               "group relative flex items-center gap-2 overflow-hidden rounded-full py-3 pr-5 pl-4 text-white shadow-lg transition-all",
               exceeded
                 ? "cursor-not-allowed bg-gray-400 shadow-gray-400/30"
                 : "bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 shadow-primary-700/30",
               !exceeded &&
-                (scribe.isStarting
+                (filly.isStarting
                   ? "opacity-90"
                   : "hover:shadow-xl hover:shadow-primary-700/40 hover:brightness-110 active:scale-95"),
             )}
@@ -658,17 +658,17 @@ function ScribeControllerInner({
                 ? exceeded === "facility"
                   ? t("facility_quota_exceeded")
                   : t("monthly_quota_exceeded")
-                : scribe.isStarting
+                : filly.isStarting
                   ? t("starting")
-                  : t("start_ai_scribe")
+                  : t("start_ai_filly")
             }
           >
             {/* soft rotating glow */}
             {!exceeded && (
-              <span className="scribe-spin-slow pointer-events-none absolute -inset-16 scale-150 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.35),transparent)] opacity-60" />
+              <span className="filly-spin-slow pointer-events-none absolute -inset-16 scale-150 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.35),transparent)] opacity-60" />
             )}
             <span className="relative flex h-6 w-6 items-center justify-center">
-              {scribe.isStarting ? (
+              {filly.isStarting ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
                 <Mic className="h-5 w-5" />
@@ -677,7 +677,7 @@ function ScribeControllerInner({
             <span className="relative text-sm font-semibold">
               {exceeded
                 ? t("quota_exceeded")
-                : scribe.isStarting
+                : filly.isStarting
                   ? t("starting")
                   : t("ai_filly")}
             </span>
@@ -688,23 +688,23 @@ function ScribeControllerInner({
     );
   }
 
-  const transcript = liveTranscript || scribe.result?.transcript || "";
+  const transcript = liveTranscript || filly.result?.transcript || "";
   const showTranscript =
     transcript &&
-    (scribe.status === "processing" || scribe.status === "completed");
+    (filly.status === "processing" || filly.status === "completed");
 
   // Real processing progress, derived from actual API signals (not a timer):
   //  0 = transcribing audio  (recording ended, no transcript yet)
   //  1 = extracting details  (transcript received, structuring templates)
   //  2 = filling the form    (structured result received / completed)
-  const processingStep = scribe.status === "completed" ? 2 : transcript ? 1 : 0;
+  const processingStep = filly.status === "completed" ? 2 : transcript ? 1 : 0;
 
   // Compact / status views (recording, processing, completed, failed)
   if (!expanded) {
     return (
       <div
         ref={fabDrag.containerRef}
-        className="scribe-pop-in fixed right-4 bottom-4 z-9999 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6"
+        className="filly-pop-in fixed right-4 bottom-4 z-9999 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6"
         style={fabDragStyle}
         onPointerDown={fabDrag.onPointerDown}
         onClickCapture={fabDrag.onClickCapture}
@@ -720,7 +720,7 @@ function ScribeControllerInner({
                 {t("transcript")}
               </span>
               <div className="flex items-center gap-1">
-                {scribe.status === "completed" && (
+                {filly.status === "completed" && (
                   <span className="text-[10px] font-semibold text-primary-700">
                     {t("filled_count", { n: filledCount })}
                   </span>
@@ -741,9 +741,9 @@ function ScribeControllerInner({
         )}
 
         {/* PROCESSING — text above orb, no card */}
-        {scribe.status === "processing" && (
+        {filly.status === "processing" && (
           <div className="flex flex-col items-center gap-2">
-            <p className="scribe-shimmer-text text-xs font-medium">
+            <p className="filly-shimmer-text text-xs font-medium">
               {t(PROCESSING_STEPS[processingStep])}
             </p>
             <AiPulse />
@@ -760,15 +760,15 @@ function ScribeControllerInner({
         )}
 
         {/* RECORDING — same size/position as processing orb for seamless transition */}
-        {scribe.status === "recording" && (
+        {filly.status === "recording" && (
           <div className="flex flex-col items-center gap-2 pr-4">
             {/* timer + pause button inline */}
             <div className="flex items-center gap-1.5">
-              <span className="scribe-shimmer-text text-xs font-medium">
+              <span className="filly-shimmer-text text-xs font-medium">
                 {timeStr}
               </span>
               <button
-                onClick={scribe.pauseRecording}
+                onClick={filly.pauseRecording}
                 className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200"
                 title={t("pause")}
               >
@@ -781,7 +781,7 @@ function ScribeControllerInner({
               className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 shadow-lg shadow-primary-700/40 transition-all active:scale-95 hover:shadow-xl hover:shadow-primary-700/50 opacity-85 blur-lg hover:opacity-100"
             >
               {/* rotating conic glow */}
-              <span className="scribe-spin-slow pointer-events-none absolute -inset-10 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.3),transparent)] opacity-50" />
+              <span className="filly-spin-slow pointer-events-none absolute -inset-10 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.3),transparent)] opacity-50" />
               {/* live audio bars — height driven by Web Audio AnalyserNode */}
               <span className="relative flex h-6 items-center gap-0.5 transition-opacity group-hover:opacity-0">
                 {barHeights.map((h, i) => (
@@ -801,14 +801,14 @@ function ScribeControllerInner({
         )}
 
         {/* PAUSED — resume near timer; stop on orb hover */}
-        {scribe.status === "paused" && (
+        {filly.status === "paused" && (
           <div className="flex flex-col items-center gap-2 pr-4">
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-semibold text-amber-500">
                 {timeStr}
               </span>
               <button
-                onClick={scribe.resumeRecording}
+                onClick={filly.resumeRecording}
                 className="flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-white transition-colors hover:bg-primary-700 opacity-90"
                 title={t("resume")}
               >
@@ -827,7 +827,7 @@ function ScribeControllerInner({
         )}
 
         {/* COMPLETED — success pill */}
-        {scribe.status === "completed" && (
+        {filly.status === "completed" && (
           <div className="flex items-center gap-2 rounded-full border border-primary-100 bg-white py-2 pr-2 pl-3 shadow-xl">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-white">
               <CheckCircle2 className="h-4 w-4" />
@@ -852,7 +852,7 @@ function ScribeControllerInner({
         )}
 
         {/* FAILED — error pill */}
-        {scribe.status === "failed" && (
+        {filly.status === "failed" && (
           <div className="flex items-center gap-2 rounded-full border border-red-100 bg-white py-2 pr-2 pl-3 shadow-xl">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
             <span className="text-sm font-medium text-red-600">
@@ -881,7 +881,7 @@ function ScribeControllerInner({
   return (
     <div
       ref={fabDrag.containerRef}
-      className="scribe-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6"
+      className="filly-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6"
       style={fabDragStyle}
     >
       <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
@@ -915,24 +915,24 @@ function ScribeControllerInner({
 
         {/* Transcript */}
         <div className="max-h-60 overflow-y-auto p-3">
-          {scribe.result?.transcript && (
+          {filly.result?.transcript && (
             <div className="mb-3">
               <span className="text-[10px] font-medium text-gray-400 uppercase">
                 {t("transcript")}
               </span>
               <p className="mt-1 text-xs leading-relaxed text-gray-600">
-                {scribe.result.transcript}
+                {filly.result.transcript}
               </p>
             </div>
           )}
 
-          {scribe.result?.structuredData && (
+          {filly.result?.structuredData && (
             <div>
               <span className="text-[10px] font-medium text-gray-400 uppercase">
                 {t("extracted_values")}
               </span>
               <div className="mt-1 space-y-1">
-                {Object.entries(scribe.result.structuredData).map(
+                {Object.entries(filly.result.structuredData).map(
                   ([key, val]) =>
                     key !== "clinical_notes" &&
                     !key.endsWith("_note") && (
@@ -947,12 +947,12 @@ function ScribeControllerInner({
                             : typeof val === "object"
                               ? JSON.stringify(val)
                               : String(val)}
-                          {scribe.result?.structuredData?.[`${key}_note`] !=
+                          {filly.result?.structuredData?.[`${key}_note`] !=
                             null && (
                             <span className="ml-1 font-normal text-gray-500">
                               (
                               {String(
-                                scribe.result.structuredData[`${key}_note`],
+                                filly.result.structuredData[`${key}_note`],
                               )}
                               )
                             </span>
@@ -965,9 +965,7 @@ function ScribeControllerInner({
             </div>
           )}
 
-          {scribe.error && (
-            <p className="text-xs text-red-500">{scribe.error}</p>
-          )}
+          {filly.error && <p className="text-xs text-red-500">{filly.error}</p>}
         </div>
 
         {/* Footer */}
@@ -992,17 +990,17 @@ function AiPulse() {
   return (
     <div className="relative flex h-20 w-20 items-center justify-center">
       {/* ambient glow */}
-      <span className="scribe-glow absolute h-14 w-14 rounded-full bg-primary-400/40 blur-xl" />
+      <span className="filly-glow absolute h-14 w-14 rounded-full bg-primary-400/40 blur-xl" />
 
       {/* outer arc — slow clockwise comet */}
       <svg
-        className="scribe-spin-slow absolute inset-0 h-full w-full"
+        className="filly-spin-slow absolute inset-0 h-full w-full"
         viewBox="0 0 80 80"
         fill="none"
       >
         <defs>
           <linearGradient
-            id="scribe-arc-outer"
+            id="filly-arc-outer"
             gradientUnits="userSpaceOnUse"
             x1="4"
             y1="40"
@@ -1017,7 +1015,7 @@ function AiPulse() {
           cx="40"
           cy="40"
           r="36"
-          stroke="url(#scribe-arc-outer)"
+          stroke="url(#filly-arc-outer)"
           strokeWidth="3.5"
           strokeLinecap="round"
           strokeDasharray="158 68"
@@ -1027,13 +1025,13 @@ function AiPulse() {
       {/* inner arc — faster counter-clockwise comet */}
       <svg
         className="absolute inset-2 h-[calc(100%-1rem)] w-[calc(100%-1rem)]"
-        style={{ animation: "scribe-spin 2.6s linear infinite reverse" }}
+        style={{ animation: "filly-spin 2.6s linear infinite reverse" }}
         viewBox="0 0 64 64"
         fill="none"
       >
         <defs>
           <linearGradient
-            id="scribe-arc-inner"
+            id="filly-arc-inner"
             gradientUnits="userSpaceOnUse"
             x1="4"
             y1="32"
@@ -1048,7 +1046,7 @@ function AiPulse() {
           cx="32"
           cy="32"
           r="28"
-          stroke="url(#scribe-arc-inner)"
+          stroke="url(#filly-arc-inner)"
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeDasharray="110 66"
@@ -1058,8 +1056,8 @@ function AiPulse() {
       {/* blinking blurry star core */}
       <div className="relative z-10 flex h-8 w-8 items-center justify-center">
         {/* soft glow behind the star */}
-        <span className="scribe-orb absolute h-8 w-8 rounded-full bg-primary-400/50 blur-md" />
-        <Sparkles className="scribe-star-blink relative h-5 w-5 text-white drop-shadow-[0_0_6px_#31c48d]" />
+        <span className="filly-orb absolute h-8 w-8 rounded-full bg-primary-400/50 blur-md" />
+        <Sparkles className="filly-star-blink relative h-5 w-5 text-white drop-shadow-[0_0_6px_#31c48d]" />
       </div>
     </div>
   );
@@ -1068,7 +1066,7 @@ function AiPulse() {
 // --- Form fill utilities ---
 
 function highlightField(qId: string): void {
-  const HIGHLIGHT_CLASS = "scribe-highlight";
+  const HIGHLIGHT_CLASS = "filly-highlight";
   const el = document.getElementById(`question-${qId}`);
   if (!el) return;
 
@@ -1080,4 +1078,4 @@ function highlightField(qId: string): void {
   setTimeout(() => el.classList.remove(HIGHLIGHT_CLASS), 3000);
 }
 
-export default ScribeController;
+export default FillyController;

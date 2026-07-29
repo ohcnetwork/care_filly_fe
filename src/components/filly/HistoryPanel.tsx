@@ -20,8 +20,8 @@ import {
   deleteHistoryEntry,
   fetchHistoryAudio,
   listHistoryEntries,
-} from "@/lib/scribe-history";
-import type { ScribeHistoryEntry } from "@/lib/types/scribe";
+} from "@/lib/filly-history";
+import type { FillyHistoryEntry } from "@/lib/types/filly";
 import { cn } from "@/lib/utils";
 
 import {
@@ -38,9 +38,9 @@ interface HistoryPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Fill the current form with an entry's extracted values. */
-  onApply?: (entry: ScribeHistoryEntry) => void;
+  onApply?: (entry: FillyHistoryEntry) => void;
   /** Re-run transcription + extraction on an entry's stored recording. */
-  onReprocess?: (entry: ScribeHistoryEntry) => void;
+  onReprocess?: (entry: FillyHistoryEntry) => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -66,7 +66,7 @@ export function HistoryPanel({
   onReprocess,
 }: HistoryPanelProps) {
   const { t } = useTranslation();
-  const [entries, setEntries] = useState<ScribeHistoryEntry[] | null>(null);
+  const [entries, setEntries] = useState<FillyHistoryEntry[] | null>(null);
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -126,7 +126,7 @@ export function HistoryPanel({
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white">
               <History className="h-3.5 w-3.5" />
             </span>
-            {t("scribe_history")}
+            {t("filly_history")}
             {!!entries?.length && (
               <span className="rounded-full bg-primary-100 px-2 py-0.5 text-[10px] font-semibold text-primary-700">
                 {entries.length}
@@ -134,7 +134,7 @@ export function HistoryPanel({
             )}
           </SheetTitle>
           <SheetDescription className="text-xs">
-            {t("scribe_history_description")}
+            {t("filly_history_description")}
           </SheetDescription>
         </SheetHeader>
 
@@ -245,12 +245,12 @@ function HistoryEntryRow({
   onApply,
   onReprocess,
 }: {
-  entry: ScribeHistoryEntry;
+  entry: FillyHistoryEntry;
   expanded: boolean;
   onToggle: () => void;
   onDelete: () => void;
-  onApply?: (entry: ScribeHistoryEntry) => void;
-  onReprocess?: (entry: ScribeHistoryEntry) => void;
+  onApply?: (entry: FillyHistoryEntry) => void;
+  onReprocess?: (entry: FillyHistoryEntry) => void;
 }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -288,7 +288,7 @@ function HistoryEntryRow({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const downloadName = `scribe-${new Date(entry.startedAt)
+  const downloadName = `filly-${new Date(entry.startedAt)
     .toISOString()
     .slice(0, 16)
     .replace(

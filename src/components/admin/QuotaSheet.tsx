@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 
 import {
   FacilityOption,
+  FillyQuota,
   QuotaCreateRequest,
-  ScribeQuota,
   searchFacilities,
 } from "@/lib/quota-api";
 
@@ -31,13 +31,13 @@ const DEFAULT_QUOTA: QuotaCreateRequest = {
   facility_external_id: "",
   tokens: 1_000_000,
   tokens_per_user: 100_000,
-  allow_scribe: true,
+  allow_filly: true,
 };
 
 export function QuotaSheet(props: {
   open: boolean;
   /** When set, the sheet edits this quota instead of creating one. */
-  quota?: ScribeQuota;
+  quota?: FillyQuota;
   onClose: () => void;
   onSubmit: (quota: QuotaCreateRequest) => Promise<void>;
   onDelete?: () => Promise<void>;
@@ -61,7 +61,7 @@ export function QuotaSheet(props: {
             facility_external_id: initQuota.facility_external_id,
             tokens: initQuota.tokens,
             tokens_per_user: initQuota.tokens_per_user,
-            allow_scribe: initQuota.allow_scribe,
+            allow_filly: initQuota.allow_filly,
           }
         : DEFAULT_QUOTA,
     );
@@ -189,12 +189,12 @@ export function QuotaSheet(props: {
 
           <div className="flex items-center justify-between">
             <label className="text-xs font-medium text-gray-600">
-              {t("allow_scribe")}
+              {t("allow_filly")}
             </label>
             <Switch
-              checked={quota.allow_scribe}
+              checked={quota.allow_filly}
               onCheckedChange={(checked) =>
-                setQuota({ ...quota, allow_scribe: checked })
+                setQuota({ ...quota, allow_filly: checked })
               }
             />
           </div>

@@ -26,7 +26,7 @@ interface TncDialogProps {
 }
 
 /**
- * Terms & conditions gate shown before the user's first scribe session.
+ * Terms & conditions gate shown before the user's first filly session.
  * Accepting creates the user's quota row on the backend.
  */
 export function TncDialog({ open, tnc, onAccept, onClose }: TncDialogProps) {
@@ -64,10 +64,10 @@ export function TncDialog({ open, tnc, onAccept, onClose }: TncDialogProps) {
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-white">
               <ScrollText className="h-4 w-4" />
             </span>
-            {t("scribe_terms_and_conditions")}
+            {t("filly_terms_and_conditions")}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            {t("scribe_terms_and_conditions")}
+            {t("filly_terms_and_conditions")}
           </DialogDescription>
         </DialogHeader>
 

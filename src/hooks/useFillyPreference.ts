@@ -1,22 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ScribePreference, scribePreferenceApi } from "@/lib/quota-api";
+import { FillyPreference, fillyPreferenceApi } from "@/lib/quota-api";
 
-interface UseScribePreferenceReturn {
+interface UseFillyPreferenceReturn {
   enabled: boolean;
   facilityAvailable: boolean;
   tnc: string | undefined;
   tncAccepted: boolean;
   isLoading: boolean;
   error: string | null;
-  /** Enable (records TnC consent server-side) or disable scribe. */
+  /** Enable (records TnC consent server-side) or disable filly. */
   setEnabled: (enabled: boolean) => Promise<void>;
   refetch: () => void;
 }
 
-/** Per-user scribe opt-in (set from the profile page). */
-export function useScribePreference(): UseScribePreferenceReturn {
-  const [data, setData] = useState<ScribePreference | null>(null);
+/** Per-user filly opt-in (set from the profile page). */
+export function useFillyPreference(): UseFillyPreferenceReturn {
+  const [data, setData] = useState<FillyPreference | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const requestSeq = useRef(0);
@@ -24,7 +24,7 @@ export function useScribePreference(): UseScribePreferenceReturn {
   const fetchPreference = useCallback(() => {
     const seq = ++requestSeq.current;
     setIsLoading(true);
-    scribePreferenceApi
+    fillyPreferenceApi
       .get()
       .then((response) => {
         if (seq !== requestSeq.current) return;
@@ -47,7 +47,7 @@ export function useScribePreference(): UseScribePreferenceReturn {
   }, [fetchPreference]);
 
   const setEnabled = useCallback(async (enabled: boolean) => {
-    const response = await scribePreferenceApi.set(enabled);
+    const response = await fillyPreferenceApi.set(enabled);
     requestSeq.current++;
     setData(response);
   }, []);

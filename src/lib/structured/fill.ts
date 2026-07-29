@@ -344,7 +344,7 @@ export async function collectFieldsToFill(
 
           if (errors.length) {
             console.warn(
-              `[Scribe] Structured fill warnings for ${questionText}:`,
+              `[Filly] Structured fill warnings for ${questionText}:`,
               errors,
             );
           }
@@ -392,7 +392,7 @@ export async function collectFieldsToFill(
           }
         } catch (err) {
           console.warn(
-            `[Scribe] Skipping structured field "${questionText}":`,
+            `[Filly] Skipping structured field "${questionText}":`,
             err,
           );
         }

@@ -22,8 +22,8 @@
   }
 }
 
-/* Scribe field highlight — applied to care_fe question nodes (#question-{id}) */
-@keyframes scribe-field-pulse {
+/* Filly field highlight — applied to care_fe question nodes (#question-{id}) */
+@keyframes filly-field-pulse {
   0%,
   100% {
     background-color: rgba(13, 159, 110, 0.06);
@@ -35,8 +35,8 @@
   }
 }
 
-.scribe-highlight {
-  animation: scribe-field-pulse 0.75s ease-in-out 3;
+.filly-highlight {
+  animation: filly-field-pulse 0.75s ease-in-out 3;
   border-radius: 0.5rem;
   outline: 2px solid rgba(13, 159, 110, 0.55);
   outline-offset: 2px;
@@ -44,11 +44,11 @@
 }
 
 /* ───────────────────────────────────────────────────────────
-   AI Scribe — floating panel motion system
+   AI Filly — floating panel motion system
    ─────────────────────────────────────────────────────────── */
 
 /* Panel entrance */
-@keyframes scribe-pop-in {
+@keyframes filly-pop-in {
   0% {
     opacity: 0;
     transform: translateY(12px) scale(0.96);
@@ -58,22 +58,22 @@
     transform: translateY(0) scale(1);
   }
 }
-.scribe-pop-in {
-  animation: scribe-pop-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+.filly-pop-in {
+  animation: filly-pop-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Slow rotating conic ring around the AI orb */
-@keyframes scribe-spin {
+@keyframes filly-spin {
   to {
     transform: rotate(360deg);
   }
 }
-.scribe-spin-slow {
-  animation: scribe-spin 5s linear infinite;
+.filly-spin-slow {
+  animation: filly-spin 5s linear infinite;
 }
 
 /* Breathing orb glow */
-@keyframes scribe-orb {
+@keyframes filly-orb {
   0%,
   100% {
     transform: scale(1);
@@ -84,12 +84,12 @@
     opacity: 1;
   }
 }
-.scribe-orb {
-  animation: scribe-orb 2.2s ease-in-out infinite;
+.filly-orb {
+  animation: filly-orb 2.2s ease-in-out infinite;
 }
 
 /* Expanding halo rings emitted from the orb */
-@keyframes scribe-halo {
+@keyframes filly-halo {
   0% {
     transform: scale(0.7);
     opacity: 0.55;
@@ -99,12 +99,12 @@
     opacity: 0;
   }
 }
-.scribe-halo {
-  animation: scribe-halo 2.4s ease-out infinite;
+.filly-halo {
+  animation: filly-halo 2.4s ease-out infinite;
 }
 
 /* Shimmering gradient sweep for text + progress bar */
-@keyframes scribe-shimmer {
+@keyframes filly-shimmer {
   0% {
     background-position: 200% 0;
   }
@@ -112,7 +112,7 @@
     background-position: -200% 0;
   }
 }
-.scribe-shimmer-text {
+.filly-shimmer-text {
   background: linear-gradient(
     100deg,
     #046c4e 0%,
@@ -125,9 +125,9 @@
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: scribe-shimmer 2.4s linear infinite;
+  animation: filly-shimmer 2.4s linear infinite;
 }
-.scribe-progress-track {
+.filly-progress-track {
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -136,11 +136,11 @@
     transparent 100%
   );
   background-size: 200% 100%;
-  animation: scribe-shimmer 1.6s linear infinite;
+  animation: filly-shimmer 1.6s linear infinite;
 }
 
 /* Live equalizer / voice bars */
-@keyframes scribe-bar {
+@keyframes filly-bar {
   0%,
   100% {
     transform: scaleY(0.35);
@@ -149,13 +149,13 @@
     transform: scaleY(1);
   }
 }
-.scribe-bar {
+.filly-bar {
   transform-origin: center;
-  animation: scribe-bar 0.9s ease-in-out infinite;
+  animation: filly-bar 0.9s ease-in-out infinite;
 }
 
 /* Premium audio waveform used in the processing card */
-@keyframes scribe-wave {
+@keyframes filly-wave {
   0%,
   100% {
     transform: scaleY(0.28);
@@ -166,13 +166,13 @@
     opacity: 1;
   }
 }
-.scribe-wave {
+.filly-wave {
   transform-origin: center;
-  animation: scribe-wave 1.2s ease-in-out infinite;
+  animation: filly-wave 1.2s ease-in-out infinite;
 }
 
 /* Soft breathing glow behind the waveform */
-@keyframes scribe-glow {
+@keyframes filly-glow {
   0%,
   100% {
     transform: scale(0.9);
@@ -183,12 +183,12 @@
     opacity: 0.6;
   }
 }
-.scribe-glow {
-  animation: scribe-glow 2.6s ease-in-out infinite;
+.filly-glow {
+  animation: filly-glow 2.6s ease-in-out infinite;
 }
 
 /* Morphing gradient AI core (premium processing visual) */
-@keyframes scribe-blob {
+@keyframes filly-blob {
   0%,
   100% {
     border-radius: 42% 58% 63% 37% / 42% 43% 57% 58%;
@@ -203,12 +203,12 @@
     transform: rotate(240deg) scale(0.97);
   }
 }
-.scribe-blob {
-  animation: scribe-blob 6s ease-in-out infinite;
+.filly-blob {
+  animation: filly-blob 6s ease-in-out infinite;
 }
 
 /* Counter-rotating orbiting particles */
-@keyframes scribe-orbit {
+@keyframes filly-orbit {
   from {
     transform: rotate(0deg);
   }
@@ -216,15 +216,15 @@
     transform: rotate(360deg);
   }
 }
-.scribe-orbit {
-  animation: scribe-orbit 4s linear infinite;
+.filly-orbit {
+  animation: filly-orbit 4s linear infinite;
 }
-.scribe-orbit-reverse {
-  animation: scribe-orbit 5s linear infinite reverse;
+.filly-orbit-reverse {
+  animation: filly-orbit 5s linear infinite reverse;
 }
 
 /* Emanating sonar rings */
-@keyframes scribe-ripple {
+@keyframes filly-ripple {
   0% {
     transform: scale(0.5);
     opacity: 0.7;
@@ -234,12 +234,12 @@
     opacity: 0;
   }
 }
-.scribe-ripple {
-  animation: scribe-ripple 2.4s ease-out infinite;
+.filly-ripple {
+  animation: filly-ripple 2.4s ease-out infinite;
 }
 
 /* Liquid-gradient orb — gentle breathing of the whole sphere */
-@keyframes scribe-orb-breathe {
+@keyframes filly-orb-breathe {
   0%,
   100% {
     transform: scale(1);
@@ -248,12 +248,12 @@
     transform: scale(1.05);
   }
 }
-.scribe-orb-breathe {
-  animation: scribe-orb-breathe 4s ease-in-out infinite;
+.filly-orb-breathe {
+  animation: filly-orb-breathe 4s ease-in-out infinite;
 }
 
 /* Siri-style translucent color sheets — opacity dims and blooms independently */
-@keyframes scribe-siri-a {
+@keyframes filly-siri-a {
   0%,
   100% {
     opacity: 0.12;
@@ -262,7 +262,7 @@
     opacity: 0.82;
   }
 }
-@keyframes scribe-siri-b {
+@keyframes filly-siri-b {
   0%,
   100% {
     opacity: 0.75;
@@ -271,7 +271,7 @@
     opacity: 0.08;
   }
 }
-@keyframes scribe-siri-c {
+@keyframes filly-siri-c {
   0%,
   100% {
     opacity: 0.45;
@@ -283,18 +283,18 @@
     opacity: 0.9;
   }
 }
-.scribe-siri-a {
-  animation: scribe-siri-a 3.6s ease-in-out infinite;
+.filly-siri-a {
+  animation: filly-siri-a 3.6s ease-in-out infinite;
 }
-.scribe-siri-b {
-  animation: scribe-siri-b 5s ease-in-out infinite;
+.filly-siri-b {
+  animation: filly-siri-b 5s ease-in-out infinite;
 }
-.scribe-siri-c {
-  animation: scribe-siri-c 4.3s ease-in-out infinite;
+.filly-siri-c {
+  animation: filly-siri-c 4.3s ease-in-out infinite;
 }
 
 /* Blinking blur star in the center of the AI spinner */
-@keyframes scribe-star-blink {
+@keyframes filly-star-blink {
   0%,
   100% {
     opacity: 1;
@@ -312,11 +312,11 @@
     transform: scale(1.15) rotate(-10deg);
   }
 }
-.scribe-star-blink {
-  animation: scribe-star-blink 2s ease-in-out infinite;
+.filly-star-blink {
+  animation: filly-star-blink 2s ease-in-out infinite;
 }
 
-@keyframes scribe-float {
+@keyframes filly-float {
   0%,
   100% {
     transform: translateY(0);
@@ -327,30 +327,30 @@
     opacity: 1;
   }
 }
-.scribe-float {
-  animation: scribe-float 2.6s ease-in-out infinite;
+.filly-float {
+  animation: filly-float 2.6s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scribe-pop-in,
-  .scribe-spin-slow,
-  .scribe-orb,
-  .scribe-halo,
-  .scribe-shimmer-text,
-  .scribe-progress-track,
-  .scribe-bar,
-  .scribe-wave,
-  .scribe-glow,
-  .scribe-blob,
-  .scribe-orbit,
-  .scribe-orbit-reverse,
-  .scribe-ripple,
-  .scribe-orb-breathe,
-  .scribe-siri-a,
-  .scribe-siri-b,
-  .scribe-siri-c,
-  .scribe-star-blink,
-  .scribe-float {
+  .filly-pop-in,
+  .filly-spin-slow,
+  .filly-orb,
+  .filly-halo,
+  .filly-shimmer-text,
+  .filly-progress-track,
+  .filly-bar,
+  .filly-wave,
+  .filly-glow,
+  .filly-blob,
+  .filly-orbit,
+  .filly-orbit-reverse,
+  .filly-ripple,
+  .filly-orb-breathe,
+  .filly-siri-a,
+  .filly-siri-b,
+  .filly-siri-c,
+  .filly-star-blink,
+  .filly-float {
     animation: none !important;
   }
 }

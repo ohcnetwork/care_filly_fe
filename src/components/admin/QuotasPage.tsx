@@ -2,7 +2,7 @@ import { Building2, Loader2, Plus, Search } from "lucide-react";
 import { navigate } from "raviger";
 import { useCallback, useEffect, useState } from "react";
 
-import { QuotaListResponse, ScribeQuota, quotaApi } from "@/lib/quota-api";
+import { FillyQuota, QuotaListResponse, quotaApi } from "@/lib/quota-api";
 import { cn } from "@/lib/utils";
 
 import { Badge } from "@/components/ui/badge";
@@ -70,7 +70,7 @@ export function QuotasPage() {
     <div className="px-4 py-6 md:px-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">
-          {t("scribe_quotas")}
+          {t("filly_quotas")}
         </h1>
         <button
           onClick={() => setShowCreate(true)}
@@ -119,11 +119,11 @@ export function QuotasPage() {
               <th className="px-4 py-3">{t("tokens_per_user")}</th>
               <th className="px-4 py-3">{t("used_tokens")}</th>
               <th className="px-4 py-3">{t("available_tokens")}</th>
-              <th className="px-4 py-3">{t("scribe")}</th>
+              <th className="px-4 py-3">{t("filly")}</th>
             </tr>
           </thead>
           <tbody>
-            {quotas.map((quota: ScribeQuota) => (
+            {quotas.map((quota: FillyQuota) => (
               <tr
                 key={quota.external_id}
                 onClick={() =>
@@ -147,12 +147,12 @@ export function QuotasPage() {
                   <Badge
                     className={cn(
                       "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                      quota.allow_scribe
+                      quota.allow_filly
                         ? "bg-primary-100 text-primary-700"
                         : "bg-gray-100 text-gray-500",
                     )}
                   >
-                    {quota.allow_scribe ? t("enabled") : t("disabled")}
+                    {quota.allow_filly ? t("enabled") : t("disabled")}
                   </Badge>
                 </td>
               </tr>

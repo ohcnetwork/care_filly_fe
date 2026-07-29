@@ -1,6 +1,6 @@
-// Scribe backend: window.CARE_API_URL + /api/care_filly — the care_filly
+// Filly backend: window.CARE_API_URL + /api/care_filly — the care_filly
 // CARE backend plugin, same origin/auth as the rest of the CARE API.
-export function resolveScribeBackend(): string | null {
+export function resolveFillyBackend(): string | null {
   const careApiUrl =
     typeof window !== "undefined" ? window.CARE_API_URL : undefined;
   if (careApiUrl) {
@@ -10,5 +10,5 @@ export function resolveScribeBackend(): string | null {
   return null;
 }
 
-/** Base URL of the scribe backend, ending in /v1 (or null when unresolvable). */
-export const SCRIBE_BASE_URL = resolveScribeBackend();
+/** Base URL of the filly backend, ending in /v1 (or null when unresolvable). */
+export const FILLY_BASE_URL = resolveFillyBackend();

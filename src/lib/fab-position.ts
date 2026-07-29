@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/structured/care-api";
 
 /**
- * Persisted position of the floating Filly widget (see ScribeController's
+ * Persisted position of the floating Filly widget (see FillyController's
  * `useDraggableFab`). Keyed per-user because a shared device/kiosk can be
  * used by more than one CARE user — without this, one user's dragged
  * position would leak into the next person's session on the same browser.
@@ -42,7 +42,7 @@ export function loadStoredFabOffset(key: string): { x: number; y: number } {
 
 /**
  * Clears the persisted widget position for the current user (used by the
- * "Reset Filly position" button in ScribeSettingsPage) and notifies any
+ * "Reset Filly position" button in FillySettingsPage) and notifies any
  * mounted widget instance in this tab to snap back immediately.
  */
 export async function resetFabPositionForCurrentUser(): Promise<void> {

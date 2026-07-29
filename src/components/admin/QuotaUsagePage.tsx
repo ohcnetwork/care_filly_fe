@@ -12,7 +12,7 @@ import {
 import { navigate } from "raviger";
 import { useCallback, useEffect, useState } from "react";
 
-import { QuotaListResponse, ScribeQuota, quotaApi } from "@/lib/quota-api";
+import { FillyQuota, QuotaListResponse, quotaApi } from "@/lib/quota-api";
 
 import { Badge } from "@/components/ui/badge";
 
@@ -25,7 +25,7 @@ const PAGE_SIZE = 10;
 export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
   const { t } = useTranslation();
 
-  const [quota, setQuota] = useState<ScribeQuota | null>(null);
+  const [quota, setQuota] = useState<FillyQuota | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(true);
   const [quotaError, setQuotaError] = useState<string | null>(null);
   const [showEdit, setShowEdit] = useState(false);
@@ -160,11 +160,11 @@ export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
         <div className="flex flex-col">
           <div className="flex items-center gap-1.5 text-xs text-gray-500">
             <CheckCircle2 className="h-4 w-4" />
-            {t("scribe")}
+            {t("filly")}
           </div>
           <div className="mt-1">
-            <Badge variant={quota.allow_scribe ? "primary" : "secondary"}>
-              {quota.allow_scribe ? t("enabled") : t("disabled")}
+            <Badge variant={quota.allow_filly ? "primary" : "secondary"}>
+              {quota.allow_filly ? t("enabled") : t("disabled")}
             </Badge>
           </div>
         </div>
@@ -265,7 +265,7 @@ export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
           await quotaApi.update(quota.external_id, {
             tokens: updated.tokens,
             tokens_per_user: updated.tokens_per_user,
-            allow_scribe: updated.allow_scribe,
+            allow_filly: updated.allow_filly,
           });
           fetchQuota();
         }}

@@ -1,42 +1,42 @@
 import { Info, Loader2, Mic } from "lucide-react";
 import { useState } from "react";
 
-import { SCRIBE_BASE_URL } from "@/lib/scribe-be";
+import { FILLY_BASE_URL } from "@/lib/filly-be";
 
 import { Switch } from "@/components/ui/switch";
 
-import { TncDialog } from "@/components/scribe/TncDialog";
+import { TncDialog } from "@/components/filly/TncDialog";
 
-import { useScribePreference } from "@/hooks/useScribePreference";
+import { useFillyPreference } from "@/hooks/useFillyPreference";
 import { useTranslation } from "@/hooks/useTranslation";
 
-interface ScribeProfileSectionProps {
+interface FillyProfileSectionProps {
   className?: string;
 }
 
 /**
- * "AI Scribe" opt-in card, reached from the user's own nav menu
+ * "AI Filly" opt-in card, reached from the user's own nav menu
  * (registered via `userNavItems` in the manifest, see
- * `ScribeSettingsPage`).
+ * `FillySettingsPage`).
  *
- * Scribe is opt-in per user: the floating scribe button only appears
+ * Filly is opt-in per user: the floating filly button only appears
  * after the user enables it here. Enabling opens the consent (TnC)
  * dialog first; acceptance is recorded server-side with the TnC hash,
  * so a changed TnC automatically requires re-consent.
  */
-export default function ScribeProfileSection({
+export default function FillyProfileSection({
   className,
-}: ScribeProfileSectionProps) {
+}: FillyProfileSectionProps) {
   const { t } = useTranslation();
-  const pref = useScribePreference();
+  const pref = useFillyPreference();
   const [tncOpen, setTncOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!SCRIBE_BASE_URL) return null;
+  if (!FILLY_BASE_URL) return null;
 
   // Only relevant when at least one of the user's facilities actually
-  // offers scribe — otherwise let the user know who to contact instead
+  // offers filly — otherwise let the user know who to contact instead
   // of silently hiding the section.
   const facilityUnavailable = !pref.isLoading && !pref.facilityAvailable;
 
@@ -75,7 +75,7 @@ export default function ScribeProfileSection({
           <div className="my-1 text-sm leading-5">
             <p className="mb-2 font-semibold">{t("ai_filly")}</p>
             <p className="text-secondary-600">
-              {t("scribe_profile_section_description")}
+              {t("filly_profile_section_description")}
             </p>
           </div>
         </div>
@@ -93,7 +93,7 @@ export default function ScribeProfileSection({
                   <Info className="h-4 w-4" />
                 </span>
                 <p className="text-sm text-gray-600">
-                  {t("scribe_not_enabled_for_facility")}
+                  {t("filly_not_enabled_for_facility")}
                 </p>
               </div>
             ) : (
@@ -104,14 +104,12 @@ export default function ScribeProfileSection({
                   </span>
                   <div>
                     <p className="text-sm font-medium text-gray-900">
-                      {pref.enabled
-                        ? t("scribe_enabled")
-                        : t("scribe_disabled")}
+                      {pref.enabled ? t("filly_enabled") : t("filly_disabled")}
                     </p>
                     <p className="mt-0.5 text-xs text-gray-500">
                       {pref.enabled
-                        ? t("scribe_enabled_note")
-                        : t("scribe_disabled_note")}
+                        ? t("filly_enabled_note")
+                        : t("filly_disabled_note")}
                     </p>
                     {error && (
                       <p className="mt-1 text-xs text-red-500">{error}</p>
@@ -127,7 +125,7 @@ export default function ScribeProfileSection({
                     checked={pref.enabled}
                     disabled={saving}
                     onCheckedChange={(checked) => void handleToggle(checked)}
-                    aria-label={t("enable_ai_scribe")}
+                    aria-label={t("enable_ai_filly")}
                   />
                 </div>
               </div>

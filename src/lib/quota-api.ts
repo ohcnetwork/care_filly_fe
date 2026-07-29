@@ -1,5 +1,5 @@
+import { FILLY_BASE_URL } from "@/lib/filly-be";
 import { getHeaders } from "@/lib/request";
-import { SCRIBE_BASE_URL } from "@/lib/scribe-be";
 
 export interface QuotaUser {
   username: string;
@@ -7,7 +7,7 @@ export interface QuotaUser {
   last_name: string;
 }
 
-export interface ScribeQuota {
+export interface FillyQuota {
   external_id: string;
   /** Null for the facility-level quota row. */
   user: QuotaUser | null;
@@ -18,7 +18,7 @@ export interface ScribeQuota {
   tokens_per_user: number;
   /** Tokens consumed in the current calendar month. */
   used: number;
-  allow_scribe: boolean;
+  allow_filly: boolean;
   tnc_accepted_date: string | null;
   created_by: QuotaUser | null;
   created_date: string | null;
@@ -26,14 +26,14 @@ export interface ScribeQuota {
 }
 
 export interface MyQuotaResponse {
-  quotas: ScribeQuota[];
+  quotas: FillyQuota[];
   tnc: string;
   tnc_accepted: boolean;
 }
 
 export interface QuotaListResponse {
   count: number;
-  results: ScribeQuota[];
+  results: FillyQuota[];
 }
 
 export interface QuotaListFilters {
@@ -49,7 +49,7 @@ export interface QuotaCreateRequest {
   facility_external_id: string;
   tokens: number;
   tokens_per_user: number;
-  allow_scribe: boolean;
+  allow_filly: boolean;
 }
 
 export class QuotaApiError extends Error {
@@ -71,11 +71,11 @@ async function quotaFetch<T>(
     query?: Record<string, string>;
   } = {},
 ): Promise<T> {
-  return scribeApiFetch<T>(`/quota${path}`, options);
+  return fillyApiFetch<T>(`/quota${path}`, options);
 }
 
-/** Authenticated fetch against the scribe backend's v1 base. */
-async function scribeApiFetch<T>(
+/** Authenticated fetch against the filly backend's v1 base. */
+async function fillyApiFetch<T>(
   path: string,
   options: {
     method?: string;
@@ -83,10 +83,10 @@ async function scribeApiFetch<T>(
     query?: Record<string, string>;
   } = {},
 ): Promise<T> {
-  if (!SCRIBE_BASE_URL) {
-    throw new QuotaApiError(0, "no_backend", "No scribe backend configured");
+  if (!FILLY_BASE_URL) {
+    throw new QuotaApiError(0, "no_backend", "No filly backend configured");
   }
-  const url = new URL(`${SCRIBE_BASE_URL}${path}`);
+  const url = new URL(`${FILLY_BASE_URL}${path}`);
   for (const [key, value] of Object.entries(options.query ?? {})) {
     if (value !== undefined && value !== "") url.searchParams.set(key, value);
   }
@@ -128,32 +128,32 @@ export const quotaApi = {
     }),
   list: (filters: QuotaListFilters = {}) =>
     quotaFetch<QuotaListResponse>("", { query: toQuery(filters) }),
-  get: (externalId: string) => quotaFetch<ScribeQuota>(`/${externalId}`),
+  get: (externalId: string) => quotaFetch<FillyQuota>(`/${externalId}`),
   create: (data: QuotaCreateRequest) =>
-    quotaFetch<ScribeQuota>("", { method: "POST", body: data }),
+    quotaFetch<FillyQuota>("", { method: "POST", body: data }),
   update: (externalId: string, data: Partial<QuotaCreateRequest>) =>
-    quotaFetch<ScribeQuota>(`/${externalId}`, { method: "PATCH", body: data }),
+    quotaFetch<FillyQuota>(`/${externalId}`, { method: "PATCH", body: data }),
   delete: (externalId: string) =>
     quotaFetch<{ detail: string }>(`/${externalId}`, { method: "DELETE" }),
 };
 
-export interface ScribePreference {
-  /** Whether the user has switched scribe on in their profile. */
+export interface FillyPreference {
+  /** Whether the user has switched filly on in their profile. */
   enabled: boolean;
   /** Current terms & conditions text. */
   tnc: string;
   /** Whether the recorded consent matches the current TnC. */
   tnc_accepted: boolean;
   tnc_accepted_date: string | null;
-  /** Whether any of the user's facilities has scribe enabled. */
+  /** Whether any of the user's facilities has filly enabled. */
   facility_available: boolean;
 }
 
-/** Per-user scribe opt-in, managed from the profile page. */
-export const scribePreferenceApi = {
-  get: () => scribeApiFetch<ScribePreference>("/preferences/scribe"),
+/** Per-user filly opt-in, managed from the profile page. */
+export const fillyPreferenceApi = {
+  get: () => fillyApiFetch<FillyPreference>("/preferences/filly"),
   set: (enabled: boolean) =>
-    scribeApiFetch<ScribePreference>("/preferences/scribe", {
+    fillyApiFetch<FillyPreference>("/preferences/filly", {
       method: "PUT",
       body: { enabled },
     }),

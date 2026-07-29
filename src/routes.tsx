@@ -10,8 +10,8 @@ const QuotaUsagePage = lazy(() =>
     default: m.QuotaUsagePage,
   })),
 );
-const ScribeSettingsPage = lazy(
-  () => import("./components/scribe/ScribeSettingsPage"),
+const FillySettingsPage = lazy(
+  () => import("./components/filly/FillySettingsPage"),
 );
 
 function AdminPage({ children }: { children: React.ReactNode }) {
@@ -37,7 +37,7 @@ const routes = {
   ),
   "/facility/:facilityId/users/:user/filly": () => (
     <Suspense fallback={null}>
-      <ScribeSettingsPage />
+      <FillySettingsPage />
     </Suspense>
   ),
 };

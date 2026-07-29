@@ -2,7 +2,7 @@ import "./index.css";
 
 export { default as manifest } from "./manifest";
 export { default as routes } from "./routes";
-export { ScribeController } from "./components/scribe";
+export { FillyController } from "./components/filly";
 
 declare global {
   interface Window {

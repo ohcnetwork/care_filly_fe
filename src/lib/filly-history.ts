@@ -1,12 +1,12 @@
+import { FILLY_BASE_URL } from "@/lib/filly-be";
 import { getHeaders } from "@/lib/request";
-import { SCRIBE_BASE_URL } from "@/lib/scribe-be";
-import type { ScribeHistoryEntry } from "@/lib/types/scribe";
+import type { FillyHistoryEntry } from "@/lib/types/filly";
 import { patchWebmDuration } from "@/lib/utils";
 
 /**
- * Server-side scribe history client.
+ * Server-side filly history client.
  *
- * History rows are written by the scribe backend when a session
+ * History rows are written by the filly backend when a session
  * finalizes and are scoped to the logged-in CARE user, so past sessions
  * follow the user across browsers/devices and are never visible to
  * anyone else. The locally captured recording is uploaded right after
@@ -28,10 +28,10 @@ interface HistoryEntryDto {
 }
 
 async function historyFetch<T>(path: string, method = "GET"): Promise<T> {
-  if (!SCRIBE_BASE_URL) {
-    throw new Error("No scribe backend configured");
+  if (!FILLY_BASE_URL) {
+    throw new Error("No filly backend configured");
   }
-  const response = await fetch(`${SCRIBE_BASE_URL}/history${path}`, {
+  const response = await fetch(`${FILLY_BASE_URL}/history${path}`, {
     method,
     headers: getHeaders(),
   });
@@ -45,7 +45,7 @@ async function historyFetch<T>(path: string, method = "GET"): Promise<T> {
   return data as T;
 }
 
-function toEntry(dto: HistoryEntryDto): ScribeHistoryEntry {
+function toEntry(dto: HistoryEntryDto): FillyHistoryEntry {
   return {
     id: dto.id,
     sessionId: dto.session_id,
@@ -61,7 +61,7 @@ function toEntry(dto: HistoryEntryDto): ScribeHistoryEntry {
 }
 
 /** The logged-in user's entries, newest first. */
-export async function listHistoryEntries(): Promise<ScribeHistoryEntry[]> {
+export async function listHistoryEntries(): Promise<FillyHistoryEntry[]> {
   const data = await historyFetch<{ results: HistoryEntryDto[] }>("");
   return (data.results ?? []).map(toEntry);
 }
@@ -80,7 +80,7 @@ export async function uploadHistoryAudio(
   audio: Blob,
   durationSeconds?: number,
 ): Promise<void> {
-  if (!SCRIBE_BASE_URL) return;
+  if (!FILLY_BASE_URL) return;
   const headers = getHeaders();
   headers.delete("Content-Type"); // let the browser set the multipart boundary
   const form = new FormData();
@@ -96,7 +96,7 @@ export async function uploadHistoryAudio(
     form.append("duration", String(Math.round(durationSeconds)));
   }
   const response = await fetch(
-    `${SCRIBE_BASE_URL}/history/session/${sessionId}/audio`,
+    `${FILLY_BASE_URL}/history/session/${sessionId}/audio`,
     { method: "POST", headers, body: form },
   );
   if (!response.ok) {
@@ -106,11 +106,11 @@ export async function uploadHistoryAudio(
 
 /** Download an entry's recording as a Blob (null when none is stored). */
 export async function fetchHistoryAudio(id: string): Promise<Blob | null> {
-  if (!SCRIBE_BASE_URL) return null;
+  if (!FILLY_BASE_URL) return null;
   const headers = getHeaders();
   headers.delete("Content-Type");
   headers.delete("Accept");
-  const response = await fetch(`${SCRIBE_BASE_URL}/history/${id}/audio`, {
+  const response = await fetch(`${FILLY_BASE_URL}/history/${id}/audio`, {
     headers,
   });
   if (response.status === 404) return null;

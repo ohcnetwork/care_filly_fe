@@ -5,15 +5,15 @@ import { resetFabPositionForCurrentUser } from "@/lib/fab-position";
 
 import { Button } from "@/components/ui/button";
 
-import ScribeProfileSection from "@/components/scribe/ScribeProfileSection";
+import FillyProfileSection from "@/components/filly/FillyProfileSection";
 
 import { useTranslation } from "@/hooks/useTranslation";
 
 /**
- * Standalone "AI Scribe" settings page, registered via `userNavItems`
+ * Standalone "AI Filly" settings page, registered via `userNavItems`
  * in the manifest (the "Filly" entry in the user's nav menu).
  */
-export default function ScribeSettingsPage() {
+export default function FillySettingsPage() {
   const { t } = useTranslation();
   const [resetting, setResetting] = useState(false);
   const [justReset, setJustReset] = useState(false);
@@ -37,7 +37,7 @@ export default function ScribeSettingsPage() {
           {t("enable_filly")}
         </h1>
       </div>
-      <ScribeProfileSection />
+      <FillyProfileSection />
 
       <section className="mt-6 flex flex-col gap-5 sm:flex-row">
         <div className="sm:w-1/4">

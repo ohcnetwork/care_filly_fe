@@ -3,12 +3,12 @@ import { createElement, lazy } from "react";
 
 import routes from "./routes";
 
-const ScribeController = lazy(
-  () => import("./components/scribe/ScribeController"),
+const FillyController = lazy(
+  () => import("./components/filly/FillyController"),
 );
 
-const ScribeProfileSection = lazy(
-  () => import("./components/scribe/ScribeProfileSection"),
+const FillyProfileSection = lazy(
+  () => import("./components/filly/FillyProfileSection"),
 );
 
 const manifest = {
@@ -16,8 +16,8 @@ const manifest = {
   routes,
   extends: ["Scribe", "UserProfileSections"],
   components: {
-    Scribe: ScribeController,
-    UserProfileSections: ScribeProfileSection,
+    Scribe: FillyController,
+    UserProfileSections: FillyProfileSection,
   },
   adminNavItems: [
     {

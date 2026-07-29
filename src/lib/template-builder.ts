@@ -92,7 +92,7 @@ function collectFields(questions: FormQuestion[], out: FormField[]) {
 }
 
 /**
- * Build a template description that instructs the scribe backend to return
+ * Build a template description that instructs the filly backend to return
  * JSON with keys matching our form fields.
  */
 export function buildTemplateDescription(fields: FormField[]): {
