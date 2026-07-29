@@ -1,15 +1,11 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import {
   type GetSessionStatusResponse,
   ScribeClient,
   type ScribeSDKConfig,
-} from "med-scribe-alliance-ts-sdk";
-import { useCallback, useEffect, useRef, useState } from "react";
-
+} from "@/lib/scribe";
 import { SCRIBE_BASE_URL } from "@/lib/scribe-be";
-import {
-  createShimmedWorkerBlobUrl,
-  installFetchCredentialsShim,
-} from "@/lib/scribe-fetch-shim";
 import { uploadHistoryAudio } from "@/lib/scribe-history";
 import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import {
@@ -32,19 +28,6 @@ const SCRIBE_LANGUAGES: string[] = (
 
 // Scribe backend resolution lives in @/lib/scribe-be (shared with the
 // quota API).
-
-// The SDK sends `credentials: "include"` on every request, but the CARE API
-// does not respond with `Access-Control-Allow-Credentials: true` — browsers
-// then block the request entirely ("Failed to fetch discovery document" in
-// production). Auth is a Bearer JWT, so credentials are never needed.
-// The worker gets its own shim via createShimmedWorkerBlobUrl.
-if (SCRIBE_BASE_URL) {
-  try {
-    installFetchCredentialsShim(new URL(SCRIBE_BASE_URL).origin);
-  } catch {
-    // Relative/invalid base URL — same-origin anyway, no shim needed.
-  }
-}
 
 /** CARE user JWT — same convention as care_scribe_fe. */
 function getCareAccessToken(): string {
@@ -142,7 +125,6 @@ export function useScribe({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
   const accumulatedRef = useRef<number>(0); // ms accumulated before the current segment
-  const workerUrlRef = useRef<string | null>(null);
   const initPromiseRef = useRef<Promise<ScribeClient> | null>(null);
   const callbacksRegisteredRef = useRef(false);
 
@@ -225,15 +207,11 @@ export function useScribe({
         );
       }
 
-      // Shim the worker's fetch so chunk uploads don't send credentials
-      // (same CORS failure mode as discovery).
-      const workerScriptUrl = await createShimmedWorkerBlobUrl();
-      workerUrlRef.current = workerScriptUrl;
-
+      // MP3 encoding + chunk uploads run in a Vite-bundled worker (or on the
+      // main thread if the worker can't start) — no CDN fetch, no fetch shim.
       const config: ScribeSDKConfig = {
         baseUrl: SCRIBE_BASE_URL,
         accessToken: tokenRef.current,
-        workerScriptUrl,
         useWorker: "auto",
         debug: DEBUG,
       };
@@ -299,10 +277,6 @@ export function useScribe({
         localRecorderRef.current.stop();
       }
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
-      if (workerUrlRef.current?.startsWith("blob:")) {
-        URL.revokeObjectURL(workerUrlRef.current);
-        workerUrlRef.current = null;
-      }
     };
   }, []);
 
@@ -817,10 +791,6 @@ export function useScribe({
       instanceRef.current = null;
       sessionIdRef.current = null;
       callbacksRegisteredRef.current = false;
-      if (workerUrlRef.current?.startsWith("blob:")) {
-        URL.revokeObjectURL(workerUrlRef.current);
-        workerUrlRef.current = null;
-      }
       stopTimer();
       accumulatedRef.current = 0;
       setDuration(0);
