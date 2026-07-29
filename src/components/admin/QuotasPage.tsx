@@ -127,7 +127,7 @@ export function QuotasPage() {
               <tr
                 key={quota.external_id}
                 onClick={() =>
-                  navigate(`/admin/scribe/quotas/${quota.external_id}`)
+                  navigate(`/admin/filly/quotas/${quota.external_id}`)
                 }
                 className="cursor-pointer border-b border-gray-50 transition-colors last:border-0 hover:bg-gray-50"
               >

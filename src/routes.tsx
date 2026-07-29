@@ -25,12 +25,12 @@ function AdminPage({ children }: { children: React.ReactNode }) {
 }
 
 const routes = {
-  "/admin/scribe/quotas": () => (
+  "/admin/filly/quotas": () => (
     <AdminPage>
       <QuotasPage />
     </AdminPage>
   ),
-  "/admin/scribe/quotas/:id": ({ id }: { id: string }) => (
+  "/admin/filly/quotas/:id": ({ id }: { id: string }) => (
     <AdminPage>
       <QuotaUsagePage quotaId={id} />
     </AdminPage>

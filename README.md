@@ -8,21 +8,21 @@ It runs as a **Vite Module Federation remote** loaded by [`care_fe`](https://git
 
 ---
 
-## ✨ What it does
+## What it does
 
-- 🎙️ **Record consultations** — a floating mic button captures the doctor–patient conversation; audio is uploaded to the backend in chunks while recording.
-- 📝 **Batch transcription** — when the recording is stopped, the backend transcribes the audio and the plugin polls for the transcript via the [`med-scribe-alliance-ts-sdk`](https://www.npmjs.com/package/med-scribe-alliance-ts-sdk) (there is no live/streaming transcript during recording).
-- 🧠 **Structured extraction** — a dynamic AI template (built from the current form's fields) instructs the model to return structured JSON (vitals, notes, etc.).
-- ⚡ **Auto-fill forms** — extracted values are fuzzy-matched to CARE questionnaire fields and written into the form, then highlighted and scrolled into view for clinician review.
-- 🕒 **Scribe history** — past sessions (transcript, extracted values, audio) are stored server-side and can be re-applied or re-processed from the history panel.
-- 📊 **Quotas & opt-in** — per-facility/per-user token quotas with admin management pages, and a per-user scribe opt-in (with TnC consent) on the profile/settings page.
+-  **Record consultations** — a floating mic button captures the doctor–patient conversation; audio is uploaded to the backend in chunks while recording.
+-  **Batch transcription** — when the recording is stopped, the backend transcribes the audio and the plugin polls for the transcript via the [`med-scribe-alliance-ts-sdk`](https://www.npmjs.com/package/med-scribe-alliance-ts-sdk) (there is no live/streaming transcript during recording).
+- **Structured extraction** — a dynamic AI template (built from the current form's fields) instructs the model to return structured JSON (vitals, notes, etc.).
+- **Auto-fill forms** — extracted values are fuzzy-matched to CARE questionnaire fields and written into the form, then highlighted and scrolled into view for clinician review.
+- **Scribe history** — past sessions (transcript, extracted values, audio) are stored server-side and can be re-applied or re-processed from the history panel.
+- **Quotas & opt-in** — per-facility/per-user token quotas with admin management pages, and a per-user scribe opt-in (with TnC consent) on the profile/settings page.
 
 ---
 
-## 🏗️ How it works (in brief)
+## How it works (in brief)
 
 ```text
-care_fe (host)  ──loads remoteEntry.js──▶  manifest.ts  ──extends "Scribe"──▶  ScribeController
+care_fe (host)  ──loads remoteEntry.js──▶  manifest.ts  ──extends "Scribe(care_filly)"──▶  ScribeController
                                                                                      │
                                           useScribe + template-builder ◀─────────────┘
                                                      │
@@ -37,7 +37,61 @@ care_fe (host)  ──loads remoteEntry.js──▶  manifest.ts  ──extends 
 
 ---
 
-## 🚀 Getting started
+## Usage flow
+
+Filly is opt-in at two levels — a facility admin must first enable it for the
+facility, and each user must then individually opt in before the floating
+button appears for them.
+
+1. **Admin: enable Filly for a facility.** A superuser opens the **Filly
+   Quotas** admin page (`/admin/filly/quotas`) and creates/edits a quota
+   entry for the facility — setting the monthly token pool (`tokens`) and the
+   per-user allowance (`tokens_per_user`), and toggling **Allow Scribe** on
+   for that facility.
+
+  ![admin panel](image.png)
+
+2. **User: gets access once their facility has a quota.** Once their
+   facility has an active quota with Allow Scribe on, the user is eligible —
+   they now have a monthly token allowance to use, but Filly is still hidden
+   until they opt in themselves (see next step).
+
+3. **User: enable Filly from the user menu.** From their own user menu, the
+   user opens **Filly** (`/facility/:facilityId/users/:user/filly`), which
+   shows the **Enable Filly** toggle.
+
+   <!-- screenshot: user menu — "Filly" entry -->
+   ![user menu](image-1.png)
+   <!-- screenshot: Filly settings page — Enable Filly toggle -->
+   ![Enable Filly toggle](image-2.png)
+
+4. **User: accept the consent dialog.** Turning the toggle on opens a Terms
+   & Conditions dialog; the preference is only saved as enabled once the
+   user accepts. If the TnC text is later updated, the user is asked to
+   re-consent.
+
+   <!-- screenshot: TnC consent dialog -->
+   ![TnC consent dialog](image-3.png)
+
+5. **Use it.** The floating **Filly** button now appears on questionnaire
+   forms for that user. Recording, transcription, and history all work
+   exactly as described above.
+
+### Moving the Filly button
+
+The floating button can be **dragged** anywhere on screen — useful when it's
+sitting on top of a page's own submit button. It snaps back to a reachable
+position if dragged near a screen edge.
+
+To reset it back to its default corner:
+
+- **Double-click / double-tap** the button, or
+- Use the **Reset Filly position** button on the same **Filly** settings
+  page used to enable it (user menu → Filly).
+
+---
+
+## Getting started
 
 ### Prerequisites
 
@@ -65,9 +119,9 @@ npm start
 | `build:watch` | Nodemon watches `src/` and runs `vite build` on changes |
 | `preview`     | Serves built assets on **port 10122** with CORS enabled |
 
-> ⚠️ Vite bakes `REACT_*` variables in at **build time** — rebuild after editing `.env`.
+> Vite bakes `REACT_*` variables in at **build time** — rebuild after editing `.env`.
 
-## 🔗 care_fe registration
+## care_fe registration
 
 Register the plugin in care_fe via the admin panel:
 
@@ -82,7 +136,7 @@ care_fe resolves the package, loads `remoteEntry.js`, and mounts `ScribeControll
 
 ---
 
-## 📂 Project structure
+## Project structure
 
 ```text
 src/
@@ -111,7 +165,7 @@ src/
 
 ---
 
-## 🛠️ Scripts
+## Scripts
 
 - `npm start` — Build in watch mode + preview server
 - `npm run build` — Production build (`vite build`)
@@ -123,6 +177,6 @@ src/
 
 ---
 
-## 🧩 Tech stack
+## Tech stack
 
 React 19 · TypeScript · Vite · Module Federation · TailwindCSS · Radix UI · `med-scribe-alliance-ts-sdk`

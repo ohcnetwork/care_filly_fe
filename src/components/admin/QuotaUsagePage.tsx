@@ -271,7 +271,7 @@ export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
         }}
         onDelete={async () => {
           await quotaApi.delete(quota.external_id);
-          navigate("/admin/scribe/quotas");
+          navigate("/admin/filly/quotas");
         }}
       />
     </div>
