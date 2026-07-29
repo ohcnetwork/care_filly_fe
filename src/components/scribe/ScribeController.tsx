@@ -48,6 +48,7 @@ const PROCESSING_STEPS = [
 
 const DRAG_THRESHOLD_PX = 4;
 const VIEWPORT_MARGIN_PX = 5;
+const LONG_PRESS_RESET_MS = 2000;
 
 function clampRectToViewport(rect: {
   left: number;
@@ -69,6 +70,27 @@ function clampRectToViewport(rect: {
   };
 }
 
+/** Ring + rising 30%-opacity fill with a short status label, shown while
+ *  the widget is pressed and held, giving visual feedback for the
+ *  press-and-hold reset gesture. */
+function LongPressIndicator({ progress }: { progress: number }) {
+  const { t } = useTranslation();
+  if (progress <= 0) return null;
+  return (
+    <div className="pointer-events-none absolute inset-0 z-20">
+      <div className="absolute top-0 bottom-0 right-0.5 -left-0.5 overflow-hidden rounded-3xl ring-2 ring-primary-500">
+        <div
+          className="absolute inset-y-0 left-0 bg-primary-600/30"
+          style={{ width: `${progress * 100}%` }}
+        />
+      </div>
+      <span className="absolute top-full bg-transparent left-1/2 mt-1 -translate-x-1/2 truncate px-2 py-0.5 text-[10px] text-gray-500 italic sm:text-xs">
+        {t("resetting_position")}
+      </span>
+    </div>
+  );
+}
+
 /**
  * Lets the user drag the floating scribe widget away from its default
  * bottom-right corner — it can otherwise sit on top of a page's own submit
@@ -78,15 +100,18 @@ function clampRectToViewport(rect: {
  * session. A plain click/tap still reaches the button underneath;
  * dragging only kicks in once the pointer has moved past a small
  * threshold, and the resulting click is suppressed so Start/Stop etc.
- * don't fire accidentally. Double-click/tap — or the "Reset position"
- * button on the settings page — resets the widget back to its default
- * corner. The widget's on-screen rect is always clamped to the viewport
- * (both while dragging and on window resize) so it can never be dragged
- * fully off-screen and become unreachable.
+ * don't fire accidentally. Double-click/tap, pressing and holding for
+ * ~3s (LONG_PRESS_RESET_MS — a touch-friendly alternative to double-tap;
+ * a ring fills in via LongPressIndicator as visual feedback), or the
+ * "Reset position" button on the settings page all reset the widget back
+ * to its default corner. The widget's on-screen rect is always clamped
+ * to the viewport (both while dragging and on window resize) so it can
+ * never be dragged fully off-screen and become unreachable.
  */
 function useDraggableFab() {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [longPressProgress, setLongPressProgress] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const userIdRef = useRef<string | null>(null);
   const dragRef = useRef<{
@@ -101,6 +126,10 @@ function useDraggableFab() {
     pointerId: number;
   } | null>(null);
   const draggedRef = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressRafRef = useRef<number | null>(null);
+  const longPressStartRef = useRef(0);
+  const longPressTriggeredRef = useRef(false);
 
   // Resolve the current user (async — CARE has no synchronous global for
   // it) and load *their* stored offset, so a shared device never shows a
@@ -142,6 +171,27 @@ function useDraggableFab() {
       window.removeEventListener(FAB_POSITION_RESET_EVENT, handleReset);
   }, []);
 
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    if (longPressRafRef.current) {
+      cancelAnimationFrame(longPressRafRef.current);
+      longPressRafRef.current = null;
+    }
+    setLongPressProgress(0);
+  }, []);
+
+  const resetPosition = useCallback(() => {
+    setOffset({ x: 0, y: 0 });
+    try {
+      localStorage.removeItem(fabPositionStorageKey(userIdRef.current));
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return; // left mouse / touch / pen only
@@ -158,8 +208,26 @@ function useDraggableFab() {
         height: rect.height,
         pointerId: e.pointerId,
       };
+
+      // Press-and-hold reset: cancelled the moment the pointer moves past
+      // the drag threshold (handleMove below) or is released/leaves early
+      // (handleUp below). longPressTriggeredRef suppresses the click that
+      // otherwise follows the eventual pointerup/tap.
+      longPressTriggeredRef.current = false;
+      longPressStartRef.current = performance.now();
+      const tick = () => {
+        const elapsed = performance.now() - longPressStartRef.current;
+        setLongPressProgress(Math.min(1, elapsed / LONG_PRESS_RESET_MS));
+        longPressRafRef.current = requestAnimationFrame(tick);
+      };
+      longPressRafRef.current = requestAnimationFrame(tick);
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTriggeredRef.current = true;
+        clearLongPress();
+        resetPosition();
+      }, LONG_PRESS_RESET_MS);
     },
-    [offset],
+    [offset, clearLongPress, resetPosition],
   );
 
   useEffect(() => {
@@ -172,6 +240,7 @@ function useDraggableFab() {
       if (!draggedRef.current) {
         draggedRef.current = true;
         setIsDragging(true);
+        clearLongPress(); // dragging supersedes the press-and-hold reset
       }
       // Clamp using the widget's own measured size so it always keeps at
       // least VIEWPORT_MARGIN_PX visible on every edge of the viewport.
@@ -190,6 +259,14 @@ function useDraggableFab() {
     const handleUp = () => {
       dragRef.current = null;
       setIsDragging(false);
+      clearLongPress();
+      if (longPressTriggeredRef.current) {
+        // clear after this tick so the click event that follows release
+        // is still suppressed by onClickCapture below.
+        setTimeout(() => {
+          longPressTriggeredRef.current = false;
+        }, 0);
+      }
       if (draggedRef.current) {
         setOffset((current) => {
           try {
@@ -218,7 +295,7 @@ function useDraggableFab() {
       window.removeEventListener("pointerup", handleUp);
       window.removeEventListener("pointercancel", handleUp);
     };
-  }, []);
+  }, [clearLongPress]);
 
   useEffect(() => {
     const reclamp = () => {
@@ -240,24 +317,16 @@ function useDraggableFab() {
   }, []);
 
   const onClickCapture = useCallback((e: SyntheticEvent) => {
-    if (draggedRef.current) {
+    if (draggedRef.current || longPressTriggeredRef.current) {
       e.preventDefault();
       e.stopPropagation();
-    }
-  }, []);
-
-  const resetPosition = useCallback(() => {
-    setOffset({ x: 0, y: 0 });
-    try {
-      localStorage.removeItem(fabPositionStorageKey(userIdRef.current));
-    } catch {
-      // ignore
     }
   }, []);
 
   return {
     offset,
     isDragging,
+    longPressProgress,
     containerRef,
     onPointerDown,
     onClickCapture,
@@ -544,6 +613,7 @@ function ScribeControllerInner({
         onDoubleClick={fabDrag.resetPosition}
         title={t("ai_filly")}
       >
+        <LongPressIndicator progress={fabDrag.longPressProgress} />
         <HistoryPanel
           open={historyOpen}
           onOpenChange={setHistoryOpen}
@@ -640,6 +710,7 @@ function ScribeControllerInner({
         onClickCapture={fabDrag.onClickCapture}
         onDoubleClick={fabDrag.resetPosition}
       >
+        <LongPressIndicator progress={fabDrag.longPressProgress} />
         {/* Live transcript — collapsible, shown while processing/completed */}
         {showTranscript && !transcriptMinimized && (
           <div className="w-72 overflow-hidden rounded-2xl border border-gray-100 bg-white/95 shadow-xl backdrop-blur">
@@ -813,7 +884,8 @@ function ScribeControllerInner({
       className="scribe-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6"
       style={fabDragStyle}
     >
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
+      <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
+        <LongPressIndicator progress={fabDrag.longPressProgress} />
         {/* Header */}
         <div
           className="flex items-center justify-between border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-3 py-2.5"

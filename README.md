@@ -85,7 +85,9 @@ position if dragged near a screen edge.
 
 To reset it back to its default corner:
 
-- **Double-click / double-tap** the button, or
+- **Double-click / double-tap** the button,
+- **Press and hold** the button for about 2 seconds (a ring fills in
+  around it while held, as a touch-friendly alternative to double-tap), or
 - Use the **Reset Filly position** button on the same **Filly** settings
   page used to enable it (user menu → Filly).
 

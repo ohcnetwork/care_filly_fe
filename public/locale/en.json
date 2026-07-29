@@ -75,6 +75,7 @@
   "reprocess_audio": "Reprocess Audio",
   "reset_filly_position": "Reset Filly button position",
   "reset_filly_position_description": "If you've dragged the Filly button somewhere inconvenient (e.g. over a page's Submit button), reset it back to its default corner.",
+  "resetting_position": "Resetting…",
   "resume": "Resume",
   "run_again": "Run again",
   "run_again_description": "Re-run transcription and extraction on this recording",
