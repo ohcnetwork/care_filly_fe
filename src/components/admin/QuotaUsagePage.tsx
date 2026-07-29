@@ -13,10 +13,12 @@ import { navigate } from "raviger";
 import { useCallback, useEffect, useState } from "react";
 
 import { FillyQuota, QuotaListResponse, quotaApi } from "@/lib/quota-api";
+import { formatName } from "@/lib/utils";
 
 import { Badge } from "@/components/ui/badge";
 
 import { QuotaSheet } from "@/components/admin/QuotaSheet";
+import { UserQuotaSheet } from "@/components/admin/UserQuotaSheet";
 
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -35,6 +37,7 @@ export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [editUser, setEditUser] = useState<FillyQuota | null>(null);
 
   const fetchQuota = useCallback(() => {
     setQuotaLoading(true);
@@ -62,7 +65,7 @@ export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
     return () => clearTimeout(timeout);
   }, [search]);
 
-  useEffect(() => {
+  const refreshUsers = useCallback(() => {
     if (!quota) return;
     setUsersLoading(true);
     quotaApi
@@ -75,6 +78,10 @@ export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
       .then(setUserQuotas)
       .finally(() => setUsersLoading(false));
   }, [quota, debouncedSearch, page]);
+
+  useEffect(() => {
+    refreshUsers();
+  }, [refreshUsers]);
 
   if (quotaLoading) {
     return (
@@ -186,7 +193,7 @@ export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
         </div>
       </div>
 
-      <div className="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="mt-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-auto">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-gray-100 bg-gray-50 text-xs text-gray-500 uppercase">
             <tr>
@@ -194,6 +201,8 @@ export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
               <th className="px-4 py-3">{t("used_tokens")}</th>
               <th className="px-4 py-3">{t("available_tokens")}</th>
               <th className="px-4 py-3">{t("started_using_since")}</th>
+              <th className="px-4 py-3">{t("status")}</th>
+              <th className="px-4 py-3 text-right">{t("actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -202,9 +211,18 @@ export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
                 key={userQuota.external_id}
                 className="border-b border-gray-50 last:border-0"
               >
-                <td className="flex items-center gap-2 px-4 py-3 font-medium text-gray-800">
-                  <User className="h-3.5 w-3.5 text-gray-400" />
-                  {userQuota.user?.username}
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <User className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                    <div className="flex flex-col">
+                      <span className="font-medium text-gray-800">
+                        {formatName(userQuota.user)}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {userQuota.user?.username}
+                      </span>
+                    </div>
+                  </div>
                 </td>
                 <td className="px-4 py-3">{userQuota.used.toLocaleString()}</td>
                 <td className="px-4 py-3">
@@ -217,6 +235,22 @@ export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
                   {userQuota.tnc_accepted_date
                     ? new Date(userQuota.tnc_accepted_date).toLocaleDateString()
                     : "—"}
+                </td>
+                <td className="px-4 py-3">
+                  <Badge
+                    variant={userQuota.allow_filly ? "primary" : "secondary"}
+                  >
+                    {userQuota.allow_filly ? t("enabled") : t("disabled")}
+                  </Badge>
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <button
+                    onClick={() => setEditUser(userQuota)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    {t("edit")}
+                  </button>
                 </td>
               </tr>
             ))}
@@ -272,6 +306,17 @@ export function QuotaUsagePage({ quotaId }: { quotaId: string }) {
         onDelete={async () => {
           await quotaApi.delete(quota.external_id);
           navigate("/admin/filly/quotas");
+        }}
+      />
+
+      <UserQuotaSheet
+        open={editUser !== null}
+        userQuota={editUser}
+        onClose={() => setEditUser(null)}
+        onSubmit={async (update) => {
+          if (!editUser) return;
+          await quotaApi.update(editUser.external_id, update);
+          refreshUsers();
         }}
       />
     </div>

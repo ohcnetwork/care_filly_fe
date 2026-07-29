@@ -110,7 +110,7 @@ export function QuotasPage() {
         </Select>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="mt-4 overflow-auto rounded-lg border border-gray-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-gray-100 bg-gray-50 text-xs text-gray-500 uppercase">
             <tr>

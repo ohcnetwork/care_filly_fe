@@ -5,6 +5,8 @@ export interface QuotaUser {
   username: string;
   first_name: string;
   last_name: string;
+  prefix?: string | null;
+  suffix?: string | null;
 }
 
 export interface FillyQuota {

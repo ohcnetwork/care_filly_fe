@@ -6,6 +6,26 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Format a user's display name, mirroring care_fe's `formatName`
+ * (src/Utils/utils.ts): first + last, falling back to
+ * the username when no name parts are set.
+ */
+export function formatName(
+  user?: {
+    first_name?: string;
+    last_name?: string;
+    username?: string;
+  } | null,
+): string {
+  if (!user) return "-";
+  const name = [user.first_name, user.last_name]
+    .map((s) => s?.trim())
+    .filter(Boolean)
+    .join(" ");
+  return name || user.username || "-";
+}
+
+/**
  * Patch the Duration element in a WebM blob's EBML header.
  *
  * MediaRecorder sets duration to 0 (or omits it entirely), so browsers
