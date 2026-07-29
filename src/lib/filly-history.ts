@@ -104,13 +104,36 @@ export async function uploadHistoryAudio(
   }
 }
 
-/** Download an entry's recording as a Blob (null when none is stored). */
+/** Short-lived signed URL for the recording (null when none is stored). */
+export async function getHistoryAudioUrl(id: string): Promise<string | null> {
+  if (!FILLY_BASE_URL) return null;
+  const headers = getHeaders();
+  headers.delete("Content-Type");
+  const response = await fetch(`${FILLY_BASE_URL}/history/${id}/audio`, {
+    headers,
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`Audio URL fetch failed with status ${response.status}`);
+  }
+  const data = (await response.json().catch(() => ({}))) as { url?: string };
+  return data.url ?? null;
+}
+
+/**
+ * Raw recording bytes as a Blob (null when none is stored).
+ *
+ * Streamed through CARE (same-origin) rather than fetched from object
+ * storage directly, so it stays a CORS-enabled request. Only needed when
+ * the browser must read the bytes (e.g. re-running the pipeline); plain
+ * playback should use {@link getHistoryAudioUrl} + `<audio src>`.
+ */
 export async function fetchHistoryAudio(id: string): Promise<Blob | null> {
   if (!FILLY_BASE_URL) return null;
   const headers = getHeaders();
   headers.delete("Content-Type");
   headers.delete("Accept");
-  const response = await fetch(`${FILLY_BASE_URL}/history/${id}/audio`, {
+  const response = await fetch(`${FILLY_BASE_URL}/history/${id}/audio/raw`, {
     headers,
   });
   if (response.status === 404) return null;

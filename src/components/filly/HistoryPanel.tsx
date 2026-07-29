@@ -13,12 +13,12 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   clearHistory,
   deleteHistoryEntry,
-  fetchHistoryAudio,
+  getHistoryAudioUrl,
   listHistoryEntries,
 } from "@/lib/filly-history";
 import type { FillyHistoryEntry } from "@/lib/types/filly";
@@ -255,28 +255,22 @@ function HistoryEntryRow({
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
 
-  // Fetch the recording only while expanded; revoke the blob URL when
-  // collapsed/unmounted.
+  // Fetch the short-lived signed URL only while expanded. The browser
+  // streams it directly via <audio src> (a no-cors media load), so no blob
+  // download or object URL bookkeeping is needed.
   useEffect(() => {
     let cancelled = false;
     if (expanded && entry.hasAudio) {
-      void fetchHistoryAudio(entry.id)
-        .then((blob) => {
-          if (cancelled || !blob) return;
-          const url = URL.createObjectURL(blob);
-          audioUrlRef.current = url;
+      void getHistoryAudioUrl(entry.id)
+        .then((url) => {
+          if (cancelled || !url) return;
           setAudioUrl(url);
         })
         .catch(() => undefined);
     }
     return () => {
       cancelled = true;
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-        audioUrlRef.current = null;
-      }
       setAudioUrl(null);
     };
   }, [expanded, entry.hasAudio, entry.id]);
