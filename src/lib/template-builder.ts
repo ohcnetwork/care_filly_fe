@@ -139,8 +139,10 @@ export function buildTemplateDescription(fields: FormField[]): {
     title: "CARE Form Auto-Fill",
     desc: [
       "Extract medical data from the consultation as a JSON object.",
+      `Today's date is ${new Date().toISOString().slice(0, 10)}. Compute every date relative to today; never assume a different year.`,
       "Only include fields explicitly mentioned in the conversation.",
       "NEVER fabricate or assume values not stated.",
+      "Write concise third-person clinical notes. Paraphrase; do NOT transcribe.",
       "Always write all values in ENGLISH, translating from any other spoken language. Keep drug brand names, proper nouns, and medical codes as-is.",
       "Use exact key names as shown below.",
       "",

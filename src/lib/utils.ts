@@ -6,6 +6,19 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Returns true when an extracted structured value has no content worth
+ * showing in a preview (null/undefined, empty string, empty array, or an
+ * object with no keys).
+ */
+export function isEmptyExtractedValue(val: unknown): boolean {
+  if (val == null) return true;
+  if (typeof val === "string") return val.trim() === "";
+  if (Array.isArray(val)) return val.length === 0;
+  if (typeof val === "object") return Object.keys(val).length === 0;
+  return false;
+}
+
+/**
  * Format a user's display name, mirroring care_fe's `formatName`
  * (src/Utils/utils.ts): first + last, falling back to
  * the username when no name parts are set.

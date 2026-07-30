@@ -55,6 +55,28 @@ function templatesReady(data: SessionStatusResponse): boolean {
   );
 }
 
+/**
+ * `getUserMedia` rejects with a raw DOMException whose message is either
+ * unhelpful ("The request is not allowed by the user agent or the platform
+ * in the current context.") or browser-specific jargon. Map the well-known
+ * mic-access failure cases to a message a clinician can actually act on.
+ */
+function describeRecordingError(err: unknown): string {
+  if (err instanceof DOMException) {
+    switch (err.name) {
+      case "NotAllowedError":
+      case "SecurityError":
+        return "Microphone access is blocked. Please allow microphone permissions for this site in your browser settings and try again.";
+      case "NotFoundError":
+      case "OverconstrainedError":
+        return "No microphone was found. Please connect a microphone and try again.";
+      case "NotReadableError":
+        return "The microphone could not be accessed — it may be in use by another application.";
+    }
+  }
+  return err instanceof Error ? err.message : "Failed to start recording";
+}
+
 interface StartOptions {
   encounterId?: string;
   templateIds?: string[];
@@ -299,7 +321,7 @@ export function useFilly({
         const recorder = new VadRecorder({
           onSpeechChunk: enqueueChunk,
           onError: (err) => {
-            setError(err.message);
+            setError(describeRecordingError(err));
             onErrorRef.current?.(err);
           },
         });
@@ -311,8 +333,7 @@ export function useFilly({
       } catch (err) {
         recorderRef.current?.cancel();
         recorderRef.current = null;
-        const message =
-          err instanceof Error ? err.message : "Failed to start recording";
+        const message = describeRecordingError(err);
         setError(message);
         updateStatus("failed");
         onError?.(err instanceof Error ? err : new Error(message));

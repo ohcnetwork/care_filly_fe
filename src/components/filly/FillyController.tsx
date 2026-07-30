@@ -24,7 +24,7 @@ import { fetchHistoryAudio } from "@/lib/filly-history";
 import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import { applyFieldToState, collectFieldsToFill } from "@/lib/structured/fill";
 import type { FillyHistoryEntry, FillyResult } from "@/lib/types/filly";
-import { cn } from "@/lib/utils";
+import { cn, isEmptyExtractedValue } from "@/lib/utils";
 
 import { HistoryPanel } from "@/components/filly/HistoryPanel";
 
@@ -935,7 +935,8 @@ function FillyControllerInner({
                 {Object.entries(filly.result.structuredData).map(
                   ([key, val]) =>
                     key !== "clinical_notes" &&
-                    !key.endsWith("_note") && (
+                    !key.endsWith("_note") &&
+                    !isEmptyExtractedValue(val) && (
                       <div
                         key={key}
                         className="flex items-center justify-between rounded bg-gray-50 px-2 py-1"
@@ -944,8 +945,8 @@ function FillyControllerInner({
                         <span className="text-xs font-medium text-gray-900">
                           {Array.isArray(val)
                             ? `${val.length} item${val.length === 1 ? "" : "s"}`
-                            : typeof val === "object"
-                              ? JSON.stringify(val)
+                            : val !== null && typeof val === "object"
+                              ? "1 item"
                               : String(val)}
                           {filly.result?.structuredData?.[`${key}_note`] !=
                             null && (

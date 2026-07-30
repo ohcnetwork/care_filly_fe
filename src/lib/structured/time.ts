@@ -123,6 +123,20 @@ function complaintMentionsFinding(
   });
 }
 
+/**
+ * Guard against absolute dates the LLM anchored to the wrong reference (it
+ * often assumes its training-cutoff year, e.g. 2023). An onset can never be in
+ * the future, and should not predate a reasonable clinical bound.
+ */
+function isPlausibleOnset(dateStr: string, referenceDate: Date): boolean {
+  const today = formatDateQueryString(referenceDate);
+  if (dateStr > today) return false;
+
+  const earliest = new Date(referenceDate);
+  earliest.setFullYear(earliest.getFullYear() - 120);
+  return dateStr >= formatDateQueryString(earliest);
+}
+
 export function resolveOnsetDatetime(
   row: Record<string, unknown>,
   options: OnsetResolveOptions = {},
@@ -150,11 +164,14 @@ export function resolveOnsetDatetime(
   }
 
   for (const candidate of candidates) {
-    const dateOnly = validateDate(candidate);
-    if (dateOnly) return dateOnly;
-
     const relative = parseRelativeOnset(candidate, referenceDate);
     if (relative) return relative;
+  }
+
+  // Fall back to explicit absolute dates, ignoring implausible values.
+  for (const candidate of candidates) {
+    const dateOnly = validateDate(candidate);
+    if (dateOnly && isPlausibleOnset(dateOnly, referenceDate)) return dateOnly;
   }
 
   const duration = row.onset_duration as

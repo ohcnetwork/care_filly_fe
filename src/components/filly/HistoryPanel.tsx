@@ -22,7 +22,7 @@ import {
   listHistoryEntries,
 } from "@/lib/filly-history";
 import type { FillyHistoryEntry } from "@/lib/types/filly";
-import { cn } from "@/lib/utils";
+import { cn, isEmptyExtractedValue } from "@/lib/utils";
 
 import {
   Sheet,
@@ -291,7 +291,10 @@ function HistoryEntryRow({
     )}.${entry.audioMimeType?.includes("mp4") ? "m4a" : "webm"}`;
 
   const structuredEntries = Object.entries(entry.structuredData || {}).filter(
-    ([key]) => key !== "clinical_notes" && !key.endsWith("_note"),
+    ([key, val]) =>
+      key !== "clinical_notes" &&
+      !key.endsWith("_note") &&
+      !isEmptyExtractedValue(val),
   );
 
   return (
@@ -365,9 +368,22 @@ function HistoryEntryRow({
           {/* Full transcript */}
           {entry.transcript && (
             <div>
-              <span className="text-[10px] font-medium tracking-wide text-gray-400 uppercase">
-                {t("transcript")}
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-medium tracking-wide text-gray-400 uppercase">
+                  {t("transcript")}
+                </span>
+                <button
+                  title={copied ? t("copied") : t("copy_transcript")}
+                  onClick={() => void handleCopy()}
+                  className="flex items-center gap-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                >
+                  {copied ? (
+                    <Check className="h-3 w-3 text-primary-600 shrink-0" />
+                  ) : (
+                    <Copy className="h-3 w-3 shrink-0" />
+                  )}
+                </button>
+              </div>
               <p className="mt-1 max-h-32 overflow-y-auto text-xs leading-relaxed whitespace-pre-wrap text-gray-600">
                 {entry.transcript}
               </p>
@@ -391,9 +407,9 @@ function HistoryEntryRow({
                     </span>
                     <span className="truncate text-xs font-medium text-gray-900">
                       {Array.isArray(val)
-                        ? t("items_count", { n: val.length })
-                        : typeof val === "object"
-                          ? JSON.stringify(val)
+                        ? t("items_count", { count: val.length })
+                        : val !== null && typeof val === "object"
+                          ? t("items_count", { count: 1 })
                           : String(val)}
                     </span>
                   </div>
@@ -423,19 +439,6 @@ function HistoryEntryRow({
               >
                 <RefreshCw className="h-3 w-3 shrink-0" />
                 <span className="sm:block hidden">{t("reprocess_audio")}</span>
-              </button>
-            )}
-            {entry.transcript && (
-              <button
-                title={copied ? t("copied") : t("copy_transcript")}
-                onClick={() => void handleCopy()}
-                className="flex items-center gap-1 rounded-md bg-white px-2 py-1.5 text-[11px] font-medium text-gray-600 shadow-sm ring-1 ring-gray-200 hover:bg-gray-100"
-              >
-                {copied ? (
-                  <Check className="h-3 w-3 text-primary-600 shrink-0" />
-                ) : (
-                  <Copy className="h-3 w-3 shrink-0" />
-                )}
               </button>
             )}
             {audioUrl && (
