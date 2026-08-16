@@ -17,7 +17,7 @@ interface FormQuestion {
   max_length?: number;
 }
 
-interface FormField {
+export interface FormField {
   id: string;
   label: string;
   type: string;
@@ -163,4 +163,46 @@ export function buildTemplateDescription(fields: FormField[]): {
     ].join("\n"),
     example: JSON.stringify(exampleObj),
   };
+}
+
+/** A Medispeak `outputs: [{type: "form", fields}]` field definition. */
+export interface MedispeakFieldSpec {
+  key: string;
+  label: string;
+  type: "string" | "number" | "boolean" | "single_select" | "multi_select";
+  enum?: string[];
+}
+
+/**
+ * Build Medispeak's typed field schema from CARE form fields.
+ *
+ * Medispeak's `form` output only supports flat scalar/enum fields — CARE's
+ * structured types (symptoms, medications, prescriptions, etc.) have no
+ * equivalent and are dropped here rather than misrepresented.
+ *
+ * `key` is the field's LABEL, not its CARE question id: `structured/fill.ts`
+ * matches extracted data back onto questions by fuzzy-matching question text
+ * against these keys (`findMatchingLabel`), the same way the legacy
+ * LLM-prompt pipeline's JSON keys work. An id-keyed result would never match.
+ */
+export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
+  const specs: MedispeakFieldSpec[] = [];
+  for (const f of fields) {
+    if (f.structuredType) continue;
+    if (f.type === "boolean") {
+      specs.push({ key: f.label, label: f.label, type: "boolean" });
+    } else if (f.type === "decimal" || f.type === "integer") {
+      specs.push({ key: f.label, label: f.label, type: "number" });
+    } else if (f.type === "choice" && f.options?.length) {
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "single_select",
+        enum: f.options,
+      });
+    } else {
+      specs.push({ key: f.label, label: f.label, type: "string" });
+    }
+  }
+  return specs;
 }

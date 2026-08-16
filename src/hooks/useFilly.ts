@@ -7,10 +7,26 @@ import {
   getSessionStatus,
   uploadChunk,
 } from "@/lib/filly-api";
-import { VadRecorder, segmentAudioBlob } from "@/lib/filly-engine";
+import {
+  VadRecorder,
+  encodeSilenceMarker,
+  segmentAudioBlob,
+} from "@/lib/filly-engine";
 import { uploadHistoryAudio } from "@/lib/filly-history";
+import {
+  type MedispeakResult,
+  type MedispeakSessionHandle,
+  commitMedispeakSession,
+  createMedispeakSession,
+  finalizeMedispeakSession,
+  isMedispeakConfigured,
+  pollMedispeakResult,
+  uploadMedispeakChunk,
+} from "@/lib/medispeak-api";
 import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import {
+  type FormField,
+  buildFieldSpecs,
   buildTemplateDescription,
   extractFormFields,
 } from "@/lib/template-builder";
@@ -29,6 +45,7 @@ const FILLY_LANGUAGES: string[] = (
   .map((code: string) => code.trim())
   .filter(Boolean);
 
+// care_filly's own pipeline (used when Medispeak isn't configured).
 const SESSION_POLL_INTERVAL_MS = 750;
 const SESSION_POLL_MAX_ATTEMPTS = 160;
 
@@ -129,6 +146,8 @@ export function useFilly({
 
   const recorderRef = useRef<VadRecorder | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const medispeakHandleRef = useRef<MedispeakSessionHandle | null>(null);
+  const chunkSeqRef = useRef(0);
   const pendingUploadsRef = useRef<Promise<void>[]>([]);
   const capturedAudioRef = useRef<Blob | null>(null);
 
@@ -181,10 +200,20 @@ export function useFilly({
   // ── chunk uploads ────────────────────────────────────────────────────────
 
   const enqueueChunk = useCallback((wav: Blob, index: number) => {
+    const handle = medispeakHandleRef.current;
+    if (handle) {
+      const seq = chunkSeqRef.current++;
+      const upload = uploadMedispeakChunk(handle, seq, wav).catch((err) => {
+        // Non-fatal — a dropped utterance only loses a little transcript.
+        if (DEBUG) console.warn("[Filly] chunk upload failed:", seq, err);
+      });
+      pendingUploadsRef.current.push(upload);
+      return;
+    }
+
     const sessionId = sessionIdRef.current;
     if (!sessionId) return;
     const upload = uploadChunk(sessionId, index, wav).catch((err) => {
-      // Non-fatal — a dropped utterance only loses a little transcript.
       if (DEBUG) console.warn("[Filly] chunk upload failed:", index, err);
     });
     pendingUploadsRef.current.push(upload);
@@ -192,37 +221,76 @@ export function useFilly({
 
   /**
    * Session parameters shared by live recordings and re-runs of stored
-   * audio: template ids, language hint, and the additional_data payload
-   * (form schema, facility for quota enforcement, encounter).
+   * audio: facility (for quota enforcement), the form fields (shaped into
+   * Medispeak's FieldSpec[] or care_filly's desc/example template
+   * depending on which pipeline is active), and the language hint.
    */
   const buildSessionExtras = useCallback(
     (options?: StartOptions) => {
-      const templates = options?.templateIds || ["care_form"];
       const facilityId = getFacilityIdFromUrl();
-      let additionalData: Record<string, unknown> | undefined =
-        options?.encounterId
-          ? { encounter_id: options.encounterId }
-          : undefined;
-      if (facilityId) {
-        // Used by the backend for per-user/facility quota enforcement.
-        additionalData = { ...additionalData, facility_id: facilityId };
-      }
-      const fields = formStateProp ? extractFormFields(formStateProp) : [];
-      if (fields.length > 0) {
-        const { desc, example } = buildTemplateDescription(fields);
-        additionalData = {
-          ...additionalData,
-          care_template: { desc, example },
-        };
-      }
+      const formFields: FormField[] = formStateProp
+        ? extractFormFields(formStateProp)
+        : [];
       const language = options?.language || FILLY_LANGUAGES;
-      return { templates, additionalData, language };
+      return {
+        facilityId,
+        formFields,
+        language,
+        templates: options?.templateIds || ["care_form"],
+        encounterId: options?.encounterId,
+      };
     },
     [formStateProp],
   );
 
   // ── result polling ───────────────────────────────────────────────────────
 
+  const finishWithMedispeakResult = useCallback(
+    (data: MedispeakResult) => {
+      if (DEBUG) console.log("[Filly] Result:", data);
+
+      const fillyResult: FillyResult = {
+        transcript: data.transcript || undefined,
+        structuredData:
+          Object.keys(data.structuredData).length > 0
+            ? data.structuredData
+            : undefined,
+      };
+
+      setResult(fillyResult);
+      if (data.status === "failed" && !data.transcript) {
+        updateStatus("failed");
+        onError?.(new Error(data.errors[0] || "Filly processing failed"));
+        return;
+      }
+      updateStatus("completed");
+      onResult?.(fillyResult);
+    },
+    [updateStatus, onResult, onError],
+  );
+
+  /**
+   * Poll the Medispeak session until it reaches a terminal status, then
+   * record quota usage (best-effort). Shared by stopRecording (live mic
+   * session) and processAudioFile (re-run of stored audio).
+   */
+  const awaitMedispeakResult = useCallback(
+    async (handle: MedispeakSessionHandle) => {
+      const data = await pollMedispeakResult(handle);
+      if (data.transcript) onTranscript?.(data.transcript);
+      finishWithMedispeakResult(data);
+      try {
+        await finalizeMedispeakSession(handle.sessionId);
+      } catch (err) {
+        // Non-fatal — the result already reached the clinician; a missed
+        // usage record only affects quota accounting.
+        if (DEBUG) console.warn("[Filly] usage finalize failed:", err);
+      }
+    },
+    [finishWithMedispeakResult, onTranscript],
+  );
+
+  // care_filly's own pipeline (used when Medispeak isn't configured).
   const finishWithData = useCallback(
     (data: SessionStatusResponse) => {
       const transcript = data.transcript || "";
@@ -252,9 +320,8 @@ export function useFilly({
   );
 
   /**
-   * Poll the session until our template data is terminal, emitting the
-   * transcript as soon as it is available. Shared by stopRecording (live
-   * mic session) and processAudioFile (re-run of stored audio).
+   * Poll the care_filly session until our template data is terminal,
+   * emitting the transcript as soon as it is available.
    */
   const awaitSessionResult = useCallback(
     async (sessionId: string) => {
@@ -306,17 +373,42 @@ export function useFilly({
         capturedAudioRef.current = null;
         pendingUploadsRef.current = [];
         accumulatedRef.current = 0;
+        chunkSeqRef.current = 0;
         setDuration(0);
 
-        const { templates, additionalData, language } =
+        const { facilityId, formFields, language, templates, encounterId } =
           buildSessionExtras(options);
 
-        const session = await createSession({
-          templates,
-          language_hint: language,
-          additional_data: additionalData,
-        });
-        sessionIdRef.current = session.session_id;
+        if (isMedispeakConfigured()) {
+          const handle = await createMedispeakSession({
+            facilityId,
+            fields: buildFieldSpecs(formFields),
+            language,
+          });
+          medispeakHandleRef.current = handle;
+          sessionIdRef.current = handle.sessionId;
+        } else {
+          medispeakHandleRef.current = null;
+          let additionalData: Record<string, unknown> | undefined = encounterId
+            ? { encounter_id: encounterId }
+            : undefined;
+          if (facilityId) {
+            additionalData = { ...additionalData, facility_id: facilityId };
+          }
+          if (formFields.length > 0) {
+            const { desc, example } = buildTemplateDescription(formFields);
+            additionalData = {
+              ...additionalData,
+              care_template: { desc, example },
+            };
+          }
+          const session = await createSession({
+            templates,
+            language_hint: language,
+            additional_data: additionalData,
+          });
+          sessionIdRef.current = session.session_id;
+        }
 
         const recorder = new VadRecorder({
           onSpeechChunk: enqueueChunk,
@@ -374,6 +466,7 @@ export function useFilly({
 
   const stopRecording = useCallback(async () => {
     const sessionId = sessionIdRef.current;
+    const handle = medispeakHandleRef.current;
     try {
       const recorder = recorderRef.current;
       if (!recorder || !sessionId) return;
@@ -388,8 +481,20 @@ export function useFilly({
       await Promise.allSettled(pendingUploadsRef.current);
       pendingUploadsRef.current = [];
 
-      await endSession(sessionId);
-      await awaitSessionResult(sessionId);
+      if (handle) {
+        // Mark the audio complete — Medispeak needs one chunk flagged `final`.
+        await uploadMedispeakChunk(
+          handle,
+          chunkSeqRef.current++,
+          encodeSilenceMarker(),
+          true,
+        );
+        await commitMedispeakSession(handle);
+        await awaitMedispeakResult(handle);
+      } else {
+        await endSession(sessionId);
+        await awaitSessionResult(sessionId);
+      }
 
       // The backend wrote the history row during finalize — attach the
       // locally captured recording to it now.
@@ -403,7 +508,14 @@ export function useFilly({
       // Best-effort: a failed row may still exist server-side.
       void flushHistoryAudio(sessionId);
     }
-  }, [stopTimer, updateStatus, awaitSessionResult, flushHistoryAudio, onError]);
+  }, [
+    stopTimer,
+    updateStatus,
+    awaitMedispeakResult,
+    awaitSessionResult,
+    flushHistoryAudio,
+    onError,
+  ]);
 
   /**
    * Re-run the full filly pipeline (transcription + extraction) on a
@@ -426,28 +538,68 @@ export function useFilly({
         setDuration(durationSeconds);
         updateStatus("processing");
 
-        const { templates, additionalData, language } =
+        const { facilityId, formFields, language, templates, encounterId } =
           buildSessionExtras(options);
 
-        const session = await createSession({
-          templates,
-          language_hint: language,
-          additional_data: additionalData,
-        });
-        sessionIdRef.current = session.session_id;
+        if (isMedispeakConfigured()) {
+          const handle = await createMedispeakSession({
+            facilityId,
+            fields: buildFieldSpecs(formFields),
+            language,
+          });
+          medispeakHandleRef.current = handle;
+          sessionIdRef.current = handle.sessionId;
 
-        const chunks = await segmentAudioBlob(audio);
-        for (let index = 0; index < chunks.length; index++) {
-          await uploadChunk(session.session_id, index, chunks[index]);
+          const chunks = await segmentAudioBlob(audio);
+          if (chunks.length === 0) {
+            await uploadMedispeakChunk(handle, 0, encodeSilenceMarker(), true);
+          } else {
+            for (let index = 0; index < chunks.length; index++) {
+              await uploadMedispeakChunk(
+                handle,
+                index,
+                chunks[index],
+                index === chunks.length - 1,
+              );
+            }
+          }
+          await commitMedispeakSession(handle);
+          await awaitMedispeakResult(handle);
+        } else {
+          medispeakHandleRef.current = null;
+          let additionalData: Record<string, unknown> | undefined = encounterId
+            ? { encounter_id: encounterId }
+            : undefined;
+          if (facilityId) {
+            additionalData = { ...additionalData, facility_id: facilityId };
+          }
+          if (formFields.length > 0) {
+            const { desc, example } = buildTemplateDescription(formFields);
+            additionalData = {
+              ...additionalData,
+              care_template: { desc, example },
+            };
+          }
+          const session = await createSession({
+            templates,
+            language_hint: language,
+            additional_data: additionalData,
+          });
+          sessionIdRef.current = session.session_id;
+
+          const chunks = await segmentAudioBlob(audio);
+          for (let index = 0; index < chunks.length; index++) {
+            await uploadChunk(session.session_id, index, chunks[index]);
+          }
+          await endSession(session.session_id);
+          await awaitSessionResult(session.session_id);
         }
-        await endSession(session.session_id);
-        await awaitSessionResult(session.session_id);
 
         // The backend wrote a fresh history row — re-attach the recording
         // so the new entry can itself be replayed or re-run.
         try {
           await uploadHistoryAudio(
-            session.session_id,
+            sessionIdRef.current!,
             audio,
             durationSeconds || undefined,
           );
@@ -464,12 +616,19 @@ export function useFilly({
         setIsStarting(false);
       }
     },
-    [buildSessionExtras, awaitSessionResult, updateStatus, onError],
+    [
+      buildSessionExtras,
+      awaitMedispeakResult,
+      awaitSessionResult,
+      updateStatus,
+      onError,
+    ],
   );
 
   const cancelRecording = useCallback(async () => {
     recorderRef.current?.cancel();
     recorderRef.current = null;
+    medispeakHandleRef.current = null;
     pendingUploadsRef.current = [];
     capturedAudioRef.current = null;
     stopTimer();
@@ -482,6 +641,8 @@ export function useFilly({
     recorderRef.current?.cancel();
     recorderRef.current = null;
     sessionIdRef.current = null;
+    medispeakHandleRef.current = null;
+    chunkSeqRef.current = 0;
     pendingUploadsRef.current = [];
     capturedAudioRef.current = null;
     stopTimer();
@@ -511,8 +672,9 @@ export function useFilly({
 }
 
 /**
- * Extract structured data from filly template results.
- * Our dynamic templates return JSON with keys matching form field labels.
+ * Extract structured data from care_filly template results (the pipeline
+ * used when Medispeak isn't configured). Our dynamic templates return JSON
+ * with keys matching form field labels.
  */
 function extractStructuredData(templates: unknown[]): Record<string, unknown> {
   const structuredData: Record<string, unknown> = {};
