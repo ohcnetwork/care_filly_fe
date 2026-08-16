@@ -3,6 +3,7 @@ import {
   getStructuredFieldExample,
 } from "@/lib/structured/fill";
 import {
+  BOOLEAN_NOT_MENTIONED,
   type SupportedStructuredType,
   isSupportedStructuredType,
 } from "@/lib/structured/types";
@@ -117,7 +118,13 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
       continue;
     }
     if (f.type === "boolean") {
-      specs.push({ key: f.label, label: f.label, type: "boolean" });
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "single_select",
+        enum: ["true", "false", BOOLEAN_NOT_MENTIONED],
+        description: `Whether the clinician explicitly stated this. Use "${BOOLEAN_NOT_MENTIONED}" if not mentioned — never guess "false".`,
+      });
     } else if (f.type === "decimal" || f.type === "integer") {
       specs.push({ key: f.label, label: f.label, type: "number" });
     } else if (f.type === "choice" && f.options?.length) {

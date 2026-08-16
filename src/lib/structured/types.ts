@@ -29,3 +29,5 @@ export function isSupportedStructuredType(
     SUPPORTED_STRUCTURED_TYPES.includes(type as SupportedStructuredType)
   );
 }
+
+export const BOOLEAN_NOT_MENTIONED = "not_mentioned";

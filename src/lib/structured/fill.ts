@@ -10,6 +10,7 @@ import {
   deserializeStructuredData,
 } from "./index";
 import {
+  BOOLEAN_NOT_MENTIONED,
   type SupportedStructuredType,
   isSupportedStructuredType,
 } from "./types";
@@ -218,6 +219,8 @@ function findOtherInvestigationQuestion(
         score = 95;
       } else if (normalized.includes("other")) {
         score = 90;
+      } else if (normalized.includes("note")) {
+        score = 50;
       }
 
       if (score > (best?.score ?? 0)) {
@@ -357,11 +360,27 @@ export async function collectFieldsToFill(
 
       const matchedValue = matchVitalToQuestion(questionText, data);
       const matchedNote = matchNoteToQuestion(questionText, data);
+      const questionType = (question.type as string) || "";
+
+      if (
+        questionType === "boolean" &&
+        matchedValue?.toLowerCase() === BOOLEAN_NOT_MENTIONED
+      ) {
+        if (matchedNote === null) continue;
+        fieldsToFill.push({
+          qId,
+          questionType,
+          matchedValue: null,
+          matchedNote,
+        });
+        continue;
+      }
+
       if (matchedValue === null && matchedNote === null) continue;
 
       fieldsToFill.push({
         qId,
-        questionType: (question.type as string) || "",
+        questionType,
         matchedValue,
         matchedNote,
       });
