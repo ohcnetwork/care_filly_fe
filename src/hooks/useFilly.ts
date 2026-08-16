@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { VadRecorder } from "@/lib/filly-engine";
 import {
+  MedispeakApiError,
   type MedispeakResult,
   type MedispeakSessionHandle,
   commitMedispeakSession,
@@ -49,6 +50,13 @@ function describeRecordingError(err: unknown): string {
     }
   }
   return err instanceof Error ? err.message : "Failed to start recording";
+}
+
+function describeStopError(err: unknown): string {
+  if (err instanceof MedispeakApiError && err.code === "audio_upload_failed") {
+    return "No speech was detected in that recording. Please try again.";
+  }
+  return err instanceof Error ? err.message : "Failed to process recording";
 }
 
 interface StartOptions {
@@ -297,8 +305,7 @@ export function useFilly({
       await commitMedispeakSession(handle);
       await awaitMedispeakResult(handle);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to process recording";
+      const message = describeStopError(err);
       setError(message);
       updateStatus("failed");
       onError?.(err instanceof Error ? err : new Error(message));

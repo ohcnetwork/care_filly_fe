@@ -34,6 +34,16 @@ interface CreateParams {
 
 class MedispeakAuthError extends Error {}
 
+/** A Medispeak error envelope's `code`, e.g. `"audio_upload_failed"`. */
+export class MedispeakApiError extends Error {
+  constructor(
+    message: string,
+    public readonly code?: string,
+  ) {
+    super(message);
+  }
+}
+
 /**
  * The Medispeak API root. Resolved at call time, in order:
  *
@@ -73,10 +83,11 @@ function requireFillyBase(): string {
 
 async function parseError(response: Response): Promise<never> {
   const data = (await response.json().catch(() => ({}))) as {
-    error?: { message?: string };
+    error?: { code?: string; message?: string };
   };
-  throw new Error(
+  throw new MedispeakApiError(
     data.error?.message ?? `Request failed with status ${response.status}`,
+    data.error?.code,
   );
 }
 
@@ -123,12 +134,7 @@ async function medispeakFetch(
     headers: { ...(init?.headers || {}), Authorization: `Bearer ${token}` },
   });
   if (response.status === 401) throw new MedispeakAuthError("token expired");
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Medispeak request failed (${response.status}): ${text.slice(0, 200)}`,
-    );
-  }
+  if (!response.ok) return parseError(response);
   return response;
 }
 
