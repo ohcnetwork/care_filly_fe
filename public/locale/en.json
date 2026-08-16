@@ -11,6 +11,7 @@
   "failed": "Failed",
   "fields_filled": "{{n}} fields filled",
   "filled_count": "✓ {{n}} filled",
+  "n_filled": "{{n}} filled",
   "filling_form": "Auto-filling the form",
   "filly": "AI Filly",
   "filly_disabled": "AI Filly is disabled",

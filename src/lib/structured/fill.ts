@@ -119,16 +119,29 @@ export function matchNoteToQuestion(
   return String(note);
 }
 
+function tryParseJSON(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
 export function parseStructuredRaw(raw: unknown): unknown[] | null {
   if (raw == null) return null;
 
   let parsed: unknown = raw;
   if (typeof raw === "string") {
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return null;
+    let result = tryParseJSON(raw);
+    if (result === undefined) {
+      // Some models over-escape a JSON-string field, embedding literal
+      // backslash-quotes in the value itself (e.g. `[{\"code\":...}]`)
+      // instead of returning plain JSON text. Unescaping once recovers it;
+      // if that still doesn't parse, this really isn't structured data.
+      result = tryParseJSON(raw.replace(/\\"/g, '"'));
     }
+    if (result === undefined) return null;
+    parsed = result;
   }
 
   if (Array.isArray(parsed)) return parsed;

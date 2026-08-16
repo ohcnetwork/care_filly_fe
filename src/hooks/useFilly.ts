@@ -213,7 +213,9 @@ export function useFilly({
   /** Poll the Medispeak session until it reaches a terminal status. */
   const awaitMedispeakResult = useCallback(
     async (handle: MedispeakSessionHandle) => {
-      const data = await pollMedispeakResult(handle);
+      const data = await pollMedispeakResult(handle, {
+        onTranscript: (transcript) => onTranscript?.(transcript),
+      });
       if (data.transcript) onTranscript?.(data.transcript);
       finishWithMedispeakResult(data);
     },

@@ -856,13 +856,14 @@ function FillyControllerInner({
                           {(() => {
                             const structured = parseStructuredRaw(val);
                             if (structured) {
-                              return `${structured.length} item${structured.length === 1 ? "" : "s"}`;
+                              return t("n_filled", { n: structured.length });
                             }
-                            return Array.isArray(val)
-                              ? `${val.length} item${val.length === 1 ? "" : "s"}`
-                              : val !== null && typeof val === "object"
-                                ? "1 item"
-                                : String(val);
+                            if (Array.isArray(val)) {
+                              return t("n_filled", { n: val.length });
+                            }
+                            return val !== null && typeof val === "object"
+                              ? t("n_filled", { n: 1 })
+                              : String(val);
                           })()}
                           {filly.result?.structuredData?.[`${key}_note`] !=
                             null && (

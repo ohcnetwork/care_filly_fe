@@ -188,11 +188,20 @@ export async function commitMedispeakSession(
 
 const TERMINAL_STATUSES = new Set(["completed", "partial", "failed"]);
 
-/** Poll until the session reaches a terminal status, mapping the result. */
+/** Poll until the session reaches a terminal status, mapping the result. But show transcript updates as they arrive. */
 export async function pollMedispeakResult(
   handle: MedispeakSessionHandle,
-  { intervalMs = 750, maxAttempts = 160 } = {},
+  {
+    intervalMs = 750,
+    maxAttempts = 160,
+    onTranscript,
+  }: {
+    intervalMs?: number;
+    maxAttempts?: number;
+    onTranscript?: (transcript: string) => void;
+  } = {},
 ): Promise<MedispeakResult> {
+  let announcedTranscript = "";
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const payload = await withTokenRefresh(handle, async (token) => {
       const response = await medispeakFetch(
@@ -201,6 +210,12 @@ export async function pollMedispeakResult(
       );
       return response.json();
     });
+
+    const transcriptSoFar = extractText(payload.transcript);
+    if (transcriptSoFar && transcriptSoFar !== announcedTranscript) {
+      announcedTranscript = transcriptSoFar;
+      onTranscript?.(transcriptSoFar);
+    }
 
     if (TERMINAL_STATUSES.has(payload.status)) {
       return mapResult(payload);
