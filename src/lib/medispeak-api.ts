@@ -1,4 +1,5 @@
 import { FILLY_BASE_URL } from "@/lib/filly-be";
+import { readPluginConfig } from "@/lib/plugin-config";
 import { getHeaders } from "@/lib/request";
 import type { MedispeakFieldSpec } from "@/lib/template-builder";
 
@@ -9,10 +10,6 @@ import type { MedispeakFieldSpec } from "@/lib/template-builder";
  * everything else (chunk upload, commit, polling) goes straight to
  * Medispeak using that short-lived, session-scoped token.
  */
-
-const MEDISPEAK_BASE_URL = (import.meta.env.REACT_MEDISPEAK_API_URL || "")
-  .toString()
-  .replace(/\/$/, "");
 
 export interface MedispeakSessionHandle {
   /** Our backend's MedispeakSession row id (for history/token-refresh). */
@@ -37,11 +34,32 @@ interface CreateParams {
 
 class MedispeakAuthError extends Error {}
 
+/**
+ * The Medispeak API root. Resolved at call time, in order:
+ *
+ *   1. `MEDISPEAK_API_URL` in the plugin's config, set when the plugin is
+ *      registered in CARE — changing it needs no rebuild.
+ *   2. `REACT_MEDISPEAK_API_URL`, baked in at build time. Kept as a local
+ *      dev convenience.
+ *
+ * Never cache this at module scope: care_fe publishes the plugin config
+ * from an effect after the configs load, so an import-time read is empty.
+ */
 function requireMedispeakBase(): string {
-  if (!MEDISPEAK_BASE_URL) {
-    throw new Error("REACT_MEDISPEAK_API_URL is not configured.");
+  const configured =
+    readPluginConfig("MEDISPEAK_API_URL") ??
+    readPluginConfig("REACT_MEDISPEAK_API_URL") ??
+    (import.meta.env.REACT_MEDISPEAK_API_URL || "").toString();
+
+  const baseUrl = configured.trim().replace(/\/$/, "");
+  if (!baseUrl) {
+    throw new Error(
+      'Medispeak API URL is not configured. Set "MEDISPEAK_API_URL" in this ' +
+        "plugin's config in CARE (Admin → plugins), or REACT_MEDISPEAK_API_URL " +
+        "in .env for local development (requires a rebuild).",
+    );
   }
-  return MEDISPEAK_BASE_URL;
+  return baseUrl;
 }
 
 function requireFillyBase(): string {
