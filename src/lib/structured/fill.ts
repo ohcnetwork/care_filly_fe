@@ -288,6 +288,15 @@ function extractComplaintText(
   return undefined;
 }
 
+interface StructuredCandidate {
+  qId: string;
+  questionText: string;
+  questionType: string;
+  structuredType: SupportedStructuredType;
+  raw: unknown[];
+  current: unknown;
+}
+
 export async function collectFieldsToFill(
   formState: unknown,
   data: Record<string, unknown>,
@@ -301,6 +310,12 @@ export async function collectFieldsToFill(
     encounterId: getEncounterIdFromUrl(),
     complaintText: extractComplaintText(data),
   };
+
+  // Collect structured questions (Diagnosis, Medication, Investigation, …)
+  // here instead of resolving them inline, so their SNOMED/valueset lookups
+  // can run concurrently below rather than stacking one question's network
+  // round-trips behind another's.
+  const structuredCandidates: StructuredCandidate[] = [];
 
   for (const group of formState) {
     const questions = (group as Record<string, unknown>).questionnaire as
@@ -323,79 +338,20 @@ export async function collectFieldsToFill(
         | undefined;
 
       if (isSupportedStructuredType(structuredType)) {
-        try {
-          const label = findMatchingLabel(questionText, data);
-          if (!label) continue;
+        const label = findMatchingLabel(questionText, data);
+        if (!label) continue;
 
-          const raw = parseStructuredRaw(data[label]);
-          if (!raw?.length) continue;
+        const raw = parseStructuredRaw(data[label]);
+        if (!raw?.length) continue;
 
-          const current = getCurrentResponseValue(formState, qId);
-          const {
-            data: structuredValue,
-            errors,
-            supplementalNote,
-          } = await deserializeStructuredData(
-            structuredType,
-            raw,
-            current,
-            fillContext,
-          );
-
-          if (errors.length) {
-            console.warn(
-              `[Filly] Structured fill warnings for ${questionText}:`,
-              errors,
-            );
-          }
-
-          const currentArr = Array.isArray(current) ? current : [];
-          const nextArr = Array.isArray(structuredValue) ? structuredValue : [];
-          const hasNewItems = nextArr.length > currentArr.length;
-
-          if (!hasNewItems && !supplementalNote) continue;
-
-          fieldsToFill.push({
-            qId,
-            questionType: (question.type as string) || "structured",
-            structuredType,
-            matchedValue: null,
-            matchedNote: supplementalNote
-              ? `Also order: ${supplementalNote}`
-              : null,
-            structuredValue: hasNewItems ? nextArr : undefined,
-          });
-
-          if (structuredType === "service_request") {
-            const otherLabel = findOtherInvestigationLabel(data);
-            const directOtherValue = otherLabel
-              ? extractScalarValue(data[otherLabel])
-              : null;
-            const otherInvestigationText = [supplementalNote, directOtherValue]
-              .filter((value): value is string => !!value?.trim())
-              .join("\n");
-
-            if (otherInvestigationText) {
-              const fallbackQuestion = findOtherInvestigationQuestion(
-                formState,
-                qId,
-              );
-              if (fallbackQuestion) {
-                fieldsToFill.push({
-                  qId: fallbackQuestion.qId,
-                  questionType: fallbackQuestion.questionType,
-                  matchedValue: otherInvestigationText,
-                  matchedNote: null,
-                });
-              }
-            }
-          }
-        } catch (err) {
-          console.warn(
-            `[Filly] Skipping structured field "${questionText}":`,
-            err,
-          );
-        }
+        structuredCandidates.push({
+          qId,
+          questionText,
+          questionType: (question.type as string) || "structured",
+          structuredType,
+          raw,
+          current: getCurrentResponseValue(formState, qId),
+        });
         continue;
       }
 
@@ -409,6 +365,85 @@ export async function collectFieldsToFill(
         matchedValue,
         matchedNote,
       });
+    }
+  }
+
+  const structuredResults = await Promise.all(
+    structuredCandidates.map(async (candidate) => {
+      try {
+        const {
+          data: structuredValue,
+          errors,
+          supplementalNote,
+        } = await deserializeStructuredData(
+          candidate.structuredType,
+          candidate.raw,
+          candidate.current,
+          fillContext,
+        );
+
+        if (errors.length) {
+          console.warn(
+            `[Filly] Structured fill warnings for ${candidate.questionText}:`,
+            errors,
+          );
+        }
+
+        return { candidate, structuredValue, supplementalNote };
+      } catch (err) {
+        console.warn(
+          `[Filly] Skipping structured field "${candidate.questionText}":`,
+          err,
+        );
+        return null;
+      }
+    }),
+  );
+
+  for (const result of structuredResults) {
+    if (!result) continue;
+    const { candidate, structuredValue, supplementalNote } = result;
+
+    const currentArr = Array.isArray(candidate.current)
+      ? candidate.current
+      : [];
+    const nextArr = Array.isArray(structuredValue) ? structuredValue : [];
+    const hasNewItems = nextArr.length > currentArr.length;
+
+    if (!hasNewItems && !supplementalNote) continue;
+
+    fieldsToFill.push({
+      qId: candidate.qId,
+      questionType: candidate.questionType,
+      structuredType: candidate.structuredType,
+      matchedValue: null,
+      matchedNote: supplementalNote ? `Also order: ${supplementalNote}` : null,
+      structuredValue: hasNewItems ? nextArr : undefined,
+    });
+
+    if (candidate.structuredType === "service_request") {
+      const otherLabel = findOtherInvestigationLabel(data);
+      const directOtherValue = otherLabel
+        ? extractScalarValue(data[otherLabel])
+        : null;
+      const otherInvestigationText = [supplementalNote, directOtherValue]
+        .filter((value): value is string => !!value?.trim())
+        .join("\n");
+
+      if (otherInvestigationText) {
+        const fallbackQuestion = findOtherInvestigationQuestion(
+          formState,
+          candidate.qId,
+        );
+        if (fallbackQuestion) {
+          fieldsToFill.push({
+            qId: fallbackQuestion.qId,
+            questionType: fallbackQuestion.questionType,
+            matchedValue: otherInvestigationText,
+            matchedNote: null,
+          });
+        }
+      }
     }
   }
 
