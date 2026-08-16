@@ -146,20 +146,21 @@ async function withTokenRefresh<T>(
   }
 }
 
-/** Upload one audio chunk directly to Medispeak. */
-export async function uploadMedispeakChunk(
+/**
+ * Upload one standalone, independently-decodable VAD utterance.
+ * Medispeak's `/audio/chunks` stitches raw parts into ONE
+ */
+export async function uploadMedispeakSegment(
   handle: MedispeakSessionHandle,
   seq: number,
   audio: Blob,
-  final = false,
 ): Promise<void> {
   await withTokenRefresh(handle, async (token) => {
     const form = new FormData();
     form.append("seq", String(seq));
-    form.append("final", String(final));
-    form.append("chunk", audio, `${seq}.wav`);
+    form.append("segment", audio, `${seq}.wav`);
     await medispeakFetch(
-      `/scribe_sessions/${handle.medispeakSessionId}/audio/chunks`,
+      `/scribe_sessions/${handle.medispeakSessionId}/audio/segments`,
       token,
       { method: "POST", body: form },
     );

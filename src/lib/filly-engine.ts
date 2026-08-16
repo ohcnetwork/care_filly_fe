@@ -20,17 +20,6 @@ const DEBUG = import.meta.env.DEV;
 const MIN_UTTERANCE_SECONDS = 0.4;
 const VAD_SAMPLE_RATE = 16000;
 
-/**
- * A short silent WAV used to mark a Medispeak session's audio complete
- * when recording stops without a trailing utterance still queued — the
- * session API needs one chunk flagged `final` to know no more audio is
- * coming.
- */
-export function encodeSilenceMarker(): Blob {
-  const samples = new Float32Array(Math.floor(0.1 * VAD_SAMPLE_RATE));
-  return new Blob([utils.encodeWAV(samples)], { type: "audio/wav" });
-}
-
 export interface VadRecorderCallbacks {
   /** A completed speech utterance, ready to upload as a chunk. */
   onSpeechChunk: (wav: Blob, index: number) => void;

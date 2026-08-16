@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { VadRecorder, encodeSilenceMarker } from "@/lib/filly-engine";
+import { VadRecorder } from "@/lib/filly-engine";
 import {
   type MedispeakResult,
   type MedispeakSessionHandle,
   commitMedispeakSession,
   createMedispeakSession,
   pollMedispeakResult,
-  uploadMedispeakChunk,
+  uploadMedispeakSegment,
 } from "@/lib/medispeak-api";
 import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import {
@@ -98,7 +98,7 @@ export function useFilly({
 
   const recorderRef = useRef<VadRecorder | null>(null);
   const medispeakHandleRef = useRef<MedispeakSessionHandle | null>(null);
-  const chunkSeqRef = useRef(0);
+  const segmentSeqRef = useRef(0);
   const pendingUploadsRef = useRef<Promise<void>[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -149,13 +149,13 @@ export function useFilly({
 
   // ── chunk uploads ────────────────────────────────────────────────────────
 
-  const enqueueChunk = useCallback((wav: Blob) => {
+  const enqueueSegment = useCallback((wav: Blob) => {
     const handle = medispeakHandleRef.current;
     if (!handle) return;
-    const seq = chunkSeqRef.current++;
-    const upload = uploadMedispeakChunk(handle, seq, wav).catch((err) => {
+    const seq = segmentSeqRef.current++;
+    const upload = uploadMedispeakSegment(handle, seq, wav).catch((err) => {
       // Non-fatal — a dropped utterance only loses a little transcript.
-      if (DEBUG) console.warn("[Filly] chunk upload failed:", seq, err);
+      if (DEBUG) console.warn("[Filly] segment upload failed:", seq, err);
     });
     pendingUploadsRef.current.push(upload);
   }, []);
@@ -222,7 +222,7 @@ export function useFilly({
         setResult(null);
         pendingUploadsRef.current = [];
         accumulatedRef.current = 0;
-        chunkSeqRef.current = 0;
+        segmentSeqRef.current = 0;
         setDuration(0);
 
         const { facilityId, formFields, language } =
@@ -235,7 +235,7 @@ export function useFilly({
         });
 
         const recorder = new VadRecorder({
-          onSpeechChunk: enqueueChunk,
+          onSpeechChunk: enqueueSegment,
           onError: (err) => {
             setError(describeRecordingError(err));
             onErrorRef.current?.(err);
@@ -257,7 +257,7 @@ export function useFilly({
         setIsStarting(false);
       }
     },
-    [buildSessionExtras, enqueueChunk, updateStatus, startTimer, onError],
+    [buildSessionExtras, enqueueSegment, updateStatus, startTimer, onError],
   );
 
   const pauseRecording = useCallback(() => {
@@ -283,24 +283,17 @@ export function useFilly({
       stopTimer(true);
       updateStatus("processing");
 
-      // Stop capture first so the last utterance's chunk is queued, then
-      // wait for every in-flight upload before finalizing. `recorder.stop()`
-      // is also the only thing that tears down the VAD and stops the
-      // MediaStream tracks — never drop this call, or the mic stays live.
+      // Stop capture first so the last utterance's segment is queued, then
+      // wait for every in-flight upload before committing — `/audio/segments`
+      // has no `final` marker, so commit must not race the last uploads.
+      // `recorder.stop()` is also the only thing that tears down the VAD and
+      // stops the MediaStream tracks — never drop this call, or the mic
+      // stays live.
       await recorder.stop();
       recorderRef.current = null;
-      // Must stay ordered before the `final` marker below, or Medispeak
-      // commits before the last utterances land.
       await Promise.allSettled(pendingUploadsRef.current);
       pendingUploadsRef.current = [];
 
-      // Mark the audio complete — Medispeak needs one chunk flagged `final`.
-      await uploadMedispeakChunk(
-        handle,
-        chunkSeqRef.current++,
-        encodeSilenceMarker(),
-        true,
-      );
       await commitMedispeakSession(handle);
       await awaitMedispeakResult(handle);
     } catch (err) {
@@ -327,7 +320,7 @@ export function useFilly({
     recorderRef.current?.cancel();
     recorderRef.current = null;
     medispeakHandleRef.current = null;
-    chunkSeqRef.current = 0;
+    segmentSeqRef.current = 0;
     pendingUploadsRef.current = [];
     stopTimer();
     accumulatedRef.current = 0;
