@@ -19,13 +19,6 @@ const manifest = {
     Scribe: FillyController,
     UserProfileSections: FillyProfileSection,
   },
-  adminNavItems: [
-    {
-      url: "/admin/filly/quotas",
-      name: "Filly Quotas",
-      icon: createElement(Mic, { className: "h-4 w-4" }),
-    },
-  ],
   userNavItems: [
     {
       name: "Filly",
