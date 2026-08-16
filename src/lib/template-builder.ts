@@ -1,8 +1,4 @@
 import {
-  getStructuredFieldDescription,
-  getStructuredFieldExample,
-} from "@/lib/structured/fill";
-import {
   type SupportedStructuredType,
   isSupportedStructuredType,
 } from "@/lib/structured/types";
@@ -17,7 +13,7 @@ interface FormQuestion {
   max_length?: number;
 }
 
-interface FormField {
+export interface FormField {
   id: string;
   label: string;
   type: string;
@@ -91,76 +87,44 @@ function collectFields(questions: FormQuestion[], out: FormField[]) {
   }
 }
 
+/** A Medispeak `outputs: [{type: "form", fields}]` field definition. */
+export interface MedispeakFieldSpec {
+  key: string;
+  label: string;
+  type: "string" | "number" | "boolean" | "single_select" | "multi_select";
+  enum?: string[];
+}
+
 /**
- * Build a template description that instructs the filly backend to return
- * JSON with keys matching our form fields.
+ * Build Medispeak's typed field schema from CARE form fields.
+ *
+ * Medispeak's `form` output only supports flat scalar/enum fields — CARE's
+ * structured types (symptoms, medications, prescriptions, etc.) have no
+ * equivalent and are dropped here rather than misrepresented.
+ *
+ * `key` is the field's LABEL, not its CARE question id: `structured/fill.ts`
+ * matches extracted data back onto questions by fuzzy-matching question text
+ * against these keys (`findMatchingLabel`), the same way the legacy
+ * LLM-prompt pipeline's JSON keys work. An id-keyed result would never match.
  */
-export function buildTemplateDescription(fields: FormField[]): {
-  title: string;
-  desc: string;
-  example: string;
-} {
-  const fieldDescriptions = fields.map((f) => {
-    if (f.structuredType) {
-      return getStructuredFieldDescription(f.structuredType, f.label);
-    }
-
-    let desc = `"${f.label}"`;
-    if (f.type === "decimal" || f.type === "integer") {
-      desc += " (numeric value only, no units)";
-    } else if (f.type === "boolean") {
-      desc += " (true or false)";
-    } else if (f.type === "choice" && f.options?.length) {
-      desc += ` (one of: ${f.options.join(", ")})`;
-    } else if (f.type === "text" || f.type === "string") {
-      desc += " (text)";
-    }
-    return `${desc}; optional "${f.label}_note" for any commentary about this field`;
-  });
-
-  const exampleObj: Record<string, unknown> = {};
+export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
+  const specs: MedispeakFieldSpec[] = [];
   for (const f of fields) {
-    if (f.structuredType) {
-      exampleObj[f.label] = getStructuredFieldExample(f.structuredType);
-      continue;
+    if (f.structuredType) continue;
+    if (f.type === "boolean") {
+      specs.push({ key: f.label, label: f.label, type: "boolean" });
+    } else if (f.type === "decimal" || f.type === "integer") {
+      specs.push({ key: f.label, label: f.label, type: "number" });
+    } else if (f.type === "choice" && f.options?.length) {
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "single_select",
+        enum: f.options,
+      });
+    } else {
+      specs.push({ key: f.label, label: f.label, type: "string" });
     }
-
-    if (f.type === "decimal") exampleObj[f.label] = 90;
-    else if (f.type === "integer") exampleObj[f.label] = 5;
-    else if (f.type === "boolean") exampleObj[f.label] = true;
-    else if (f.type === "choice" && f.options?.length)
-      exampleObj[f.label] = f.options[0];
-    else exampleObj[f.label] = "relevant text from consultation";
-    exampleObj[`${f.label}_note`] =
-      "commentary if mentioned (e.g. normal, elevated)";
   }
-
-  return {
-    title: "CARE Form Auto-Fill",
-    desc: [
-      "Extract medical data from the consultation as a JSON object.",
-      `Today's date is ${new Date().toISOString().slice(0, 10)}. Compute every date relative to today; never assume a different year.`,
-      "Only include fields explicitly mentioned in the conversation.",
-      "NEVER fabricate or assume values not stated.",
-      "Write concise third-person clinical notes. Paraphrase; do NOT transcribe.",
-      "Always write all values in ENGLISH, translating from any other spoken language. Keep drug brand names, proper nouns, and medical codes as-is.",
-      "Use exact key names as shown below.",
-      "",
-      "For each field, if the clinician adds commentary (e.g. 'heart rate is 99 which is normal'),",
-      "put the measurement in the field key and the commentary in a separate key with '_note' suffix",
-      '(e.g. "Heart Rate": 99, "Heart Rate_note": "normal").',
-      "Only include _note keys when commentary was explicitly stated.",
-      "",
-      "For structured clinical fields (symptoms, diagnosis, allergies, medications, prescriptions),",
-      "return a JSON array under the field label with SNOMED codes in snomed_info/medication/medicine objects.",
-      "Use medication_request only for NEW prescriptions being ordered, not current medications.",
-      "Only include entries explicitly mentioned in the conversation.",
-      "",
-      "Fields:",
-      ...fieldDescriptions,
-      "",
-      "Output ONLY valid JSON, no markdown, no extra text.",
-    ].join("\n"),
-    example: JSON.stringify(exampleObj),
-  };
+  return specs;
 }
