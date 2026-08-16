@@ -8,24 +8,44 @@ It runs as a **Vite Module Federation remote** loaded by [`care_fe`](https://git
 
 ---
 
-## Required configuration
+## Configuring the Medispeak API URL
 
-`REACT_MEDISPEAK_API_URL` **must be set**, or the plugin throws
-`REACT_MEDISPEAK_API_URL is not configured.` as soon as a recording starts.
-There is no fallback pipeline.
+The browser uploads audio straight to Medispeak, so it needs the API root.
+Without it, recording fails immediately — there is no fallback pipeline.
+
+**Preferred — plugin config in CARE.** No rebuild, and it can differ per
+environment. Add a `config` bag to the plugin's registration:
+
+```json
+{
+  "url": "http://localhost:10122/assets/remoteEntry.js",
+  "name": "care_filly_fe",
+  "config": {
+    "MEDISPEAK_API_URL": "https://api.medispeak.example/api/v2"
+  }
+}
+```
+
+care_fe publishes this to plugins as `window.__CARE_PLUGIN_RUNTIME__`, and
+the value is read at call time — so changing it takes effect on reload.
+
+**Fallback — build-time env var**, for local development:
 
 ```bash
 cp .env.example .env
-# then set REACT_MEDISPEAK_API_URL to your Medispeak v2 API root,
-# e.g. https://api.medispeak.example/api/v2
+# set REACT_MEDISPEAK_API_URL=http://localhost:3000/api/v2
+npm run build
 ```
 
 > Vite bakes `REACT_*` variables in at **build time** (`envPrefix: "REACT_"`) —
 > **rebuild after editing `.env`.** Editing it without rebuilding changes nothing.
+> This is exactly why the plugin config above is preferred for deployments.
+
+The plugin config wins when both are set.
 
 The [care_filly](https://github.com/ohcnetwork/care_filly) backend plugin needs
-`MEDISPEAK_BASE_URL` and `MEDISPEAK_API_KEY` set too, or session creation
-returns 502.
+its own `MEDISPEAK_BASE_URL` and `MEDISPEAK_API_KEY` (the account secret, which
+never reaches the browser), or session creation returns 502.
 
 ---
 
@@ -107,7 +127,7 @@ To reset it back to its default corner:
 ### Setup
 
 ```bash
-# 1. Configure environment — REACT_MEDISPEAK_API_URL is REQUIRED
+# 1. Configure environment (optional — see "Configuring the Medispeak API URL")
 cp .env.example .env
 
 # 2. Install dependencies
@@ -131,11 +151,14 @@ Register the plugin in care_fe via the admin panel:
 ```json
 {
   "url": "http://localhost:10122/assets/remoteEntry.js",
-  "name": "care_filly_fe"
+  "name": "care_filly_fe",
+  "config": {
+    "MEDISPEAK_API_URL": "https://api.medispeak.example/api/v2"
+  }
 }
 ```
 
-care_fe resolves the package, loads `remoteEntry.js`, and mounts `FillyController` on forms that expose the `Scribe` extension point.
+care_fe resolves the package, loads `remoteEntry.js`, and mounts `FillyController` on forms that expose the `Scribe` extension point. Anything under `config` is published to the plugin at runtime via `window.__CARE_PLUGIN_RUNTIME__`.
 
 ---
 
@@ -156,6 +179,7 @@ src/
 │       └── FillySettingsPage.tsx   # User settings page
 └── lib/
     ├── filly-be.ts           # care_filly backend URL (from window.CARE_API_URL)
+    ├── plugin-config.ts      # Host-supplied runtime plugin config
     ├── medispeak-api.ts      # Session/token seam + direct Medispeak calls
     ├── filly-engine.ts       # VadRecorder (Silero VAD)
     ├── template-builder.ts   # Form fields → Medispeak FieldSpec[]
