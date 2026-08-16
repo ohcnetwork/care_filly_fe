@@ -19,7 +19,11 @@ import {
   loadStoredFabOffset,
   resolveCurrentUserId,
 } from "@/lib/fab-position";
-import { applyFieldToState, collectFieldsToFill } from "@/lib/structured/fill";
+import {
+  applyFieldToState,
+  collectFieldsToFill,
+  parseStructuredRaw,
+} from "@/lib/structured/fill";
 import type { FillyResult } from "@/lib/types/filly";
 import { cn, isEmptyExtractedValue } from "@/lib/utils";
 
@@ -849,11 +853,17 @@ function FillyControllerInner({
                       >
                         <span className="text-xs text-gray-500">{key}</span>
                         <span className="text-xs font-medium text-gray-900">
-                          {Array.isArray(val)
-                            ? `${val.length} item${val.length === 1 ? "" : "s"}`
-                            : val !== null && typeof val === "object"
-                              ? "1 item"
-                              : String(val)}
+                          {(() => {
+                            const structured = parseStructuredRaw(val);
+                            if (structured) {
+                              return `${structured.length} item${structured.length === 1 ? "" : "s"}`;
+                            }
+                            return Array.isArray(val)
+                              ? `${val.length} item${val.length === 1 ? "" : "s"}`
+                              : val !== null && typeof val === "object"
+                                ? "1 item"
+                                : String(val);
+                          })()}
                           {filly.result?.structuredData?.[`${key}_note`] !=
                             null && (
                             <span className="ml-1 font-normal text-gray-500">

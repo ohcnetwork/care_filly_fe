@@ -3,7 +3,12 @@ import {
   getEncounterIdFromUrl,
   getFacilityIdFromUrl,
 } from "./care-api";
-import { type StructuredFillContext, deserializeStructuredData } from "./index";
+import {
+  STRUCTURED_TEMPLATE_DESCRIPTIONS,
+  STRUCTURED_TEMPLATE_EXAMPLES,
+  type StructuredFillContext,
+  deserializeStructuredData,
+} from "./index";
 import {
   type SupportedStructuredType,
   isSupportedStructuredType,
@@ -113,7 +118,7 @@ export function matchNoteToQuestion(
   return String(note);
 }
 
-function parseStructuredRaw(raw: unknown): unknown[] | null {
+export function parseStructuredRaw(raw: unknown): unknown[] | null {
   if (raw == null) return null;
 
   let parsed: unknown = raw;
@@ -476,4 +481,17 @@ export function toResponseValue(
     return [{ type: questionType, value }];
   }
   return [{ type: "string", value }];
+}
+
+export function getStructuredFieldDescription(
+  structuredType: SupportedStructuredType,
+  label: string,
+): string {
+  return `"${label}" (${STRUCTURED_TEMPLATE_DESCRIPTIONS[structuredType]})`;
+}
+
+export function getStructuredFieldExample(
+  structuredType: SupportedStructuredType,
+): unknown {
+  return STRUCTURED_TEMPLATE_EXAMPLES[structuredType];
 }

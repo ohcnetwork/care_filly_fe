@@ -1,4 +1,8 @@
 import {
+  getStructuredFieldDescription,
+  getStructuredFieldExample,
+} from "@/lib/structured/fill";
+import {
   type SupportedStructuredType,
   isSupportedStructuredType,
 } from "@/lib/structured/types";
@@ -93,14 +97,11 @@ export interface MedispeakFieldSpec {
   label: string;
   type: "string" | "number" | "boolean" | "single_select" | "multi_select";
   enum?: string[];
+  description?: string;
 }
 
 /**
  * Build Medispeak's typed field schema from CARE form fields.
- *
- * Medispeak's `form` output only supports flat scalar/enum fields — CARE's
- * structured types (symptoms, medications, prescriptions, etc.) have no
- * equivalent and are dropped here rather than misrepresented.
  *
  * `key` is the field's LABEL, not its CARE question id: `structured/fill.ts`
  * matches extracted data back onto questions by fuzzy-matching question text
@@ -110,7 +111,11 @@ export interface MedispeakFieldSpec {
 export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
   const specs: MedispeakFieldSpec[] = [];
   for (const f of fields) {
-    if (f.structuredType) continue;
+    if (f.structuredType) {
+      const description = `${getStructuredFieldDescription(f.structuredType, f.label)}; example: ${JSON.stringify(getStructuredFieldExample(f.structuredType))}`;
+      specs.push({ key: f.label, label: f.label, type: "string", description });
+      continue;
+    }
     if (f.type === "boolean") {
       specs.push({ key: f.label, label: f.label, type: "boolean" });
     } else if (f.type === "decimal" || f.type === "integer") {
