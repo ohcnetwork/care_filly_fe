@@ -14,12 +14,6 @@ const MEDISPEAK_BASE_URL = (import.meta.env.REACT_MEDISPEAK_API_URL || "")
   .toString()
   .replace(/\/$/, "");
 
-/** True when REACT_MEDISPEAK_API_URL is set — callers use this to choose
- * between the Medispeak pipeline and care_filly's own ASR/LLM pipeline. */
-export function isMedispeakConfigured(): boolean {
-  return Boolean(MEDISPEAK_BASE_URL);
-}
-
 export interface MedispeakSessionHandle {
   /** Our backend's MedispeakSession row id (for history/token-refresh). */
   sessionId: string;
@@ -99,21 +93,6 @@ async function refreshToken(sessionId: string): Promise<string> {
   if (!response.ok) return parseError(response);
   const data = await response.json();
   return data.token;
-}
-
-/**
- * Record quota usage for a finished session. Our backend re-fetches the
- * authoritative usage from Medispeak itself (not trusted from the
- * browser) and writes it once — safe to call more than once.
- */
-export async function finalizeMedispeakSession(
-  sessionId: string,
-): Promise<void> {
-  const response = await fetch(
-    `${requireFillyBase()}/medispeak/sessions/${sessionId}/finalize`,
-    { method: "POST", headers: getHeaders() },
-  );
-  if (!response.ok) return parseError(response);
 }
 
 async function medispeakFetch(

@@ -18,7 +18,6 @@ export default defineConfig({
         "react-dom",
         "react-i18next",
         "@tanstack/react-query",
-        "raviger",
       ],
     }),
     tailwindcss(),

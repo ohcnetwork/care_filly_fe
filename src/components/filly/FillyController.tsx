@@ -2,7 +2,6 @@ import {
   CheckCircle2,
   ChevronDown,
   FileText,
-  History,
   Loader2,
   Mic,
   Pause,
@@ -20,17 +19,12 @@ import {
   loadStoredFabOffset,
   resolveCurrentUserId,
 } from "@/lib/fab-position";
-import { fetchHistoryAudio } from "@/lib/filly-history";
-import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import { applyFieldToState, collectFieldsToFill } from "@/lib/structured/fill";
-import type { FillyHistoryEntry, FillyResult } from "@/lib/types/filly";
+import type { FillyResult } from "@/lib/types/filly";
 import { cn, isEmptyExtractedValue } from "@/lib/utils";
-
-import { HistoryPanel } from "@/components/filly/HistoryPanel";
 
 import { useFilly } from "@/hooks/useFilly";
 import { useFillyPreference } from "@/hooks/useFillyPreference";
-import { useQuota } from "@/hooks/useQuota";
 import { useTranslation } from "@/hooks/useTranslation";
 
 interface FillyControllerProps {
@@ -349,15 +343,11 @@ function FillyControllerInner({
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const appliedRef = useRef(false);
   const fillTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [filledCount, setFilledCount] = useState(0);
 
-  // Per-user/facility quota gating (mirrors care_filly_fe) + the user's
-  // own filly opt-in from the profile page.
-  const facilityId = getFacilityIdFromUrl();
-  const quota = useQuota(facilityId);
+  // The user's own filly opt-in from the profile page.
   const preference = useFillyPreference();
 
   // Lets the widget be dragged clear of a page's own submit button.
@@ -419,20 +409,6 @@ function FillyControllerInner({
       }
     },
     [formState, setFormState],
-  );
-
-  /** Re-fill the form from a past session picked in the history panel. */
-  const handleApplyFromHistory = useCallback(
-    (entry: FillyHistoryEntry) => {
-      clearFillTimeouts();
-      appliedRef.current = false; // applyResults is one-shot per recording
-      setHistoryOpen(false);
-      void applyResults({
-        transcript: entry.transcript,
-        structuredData: entry.structuredData,
-      });
-    },
-    [applyResults, clearFillTimeouts],
   );
 
   const [liveTranscript, setLiveTranscript] = useState<string>("");
@@ -541,7 +517,6 @@ function FillyControllerInner({
     appliedRef.current = false;
     setFilledCount(0);
     setTranscriptMinimized(false);
-    setHistoryOpen(false);
     await filly.startRecording();
   };
 
@@ -560,27 +535,6 @@ function FillyControllerInner({
     setTranscriptMinimized(false);
   };
 
-  /** Re-run the whole pipeline on a past entry's stored recording. */
-  const handleReprocessFromHistory = useCallback(
-    async (entry: FillyHistoryEntry) => {
-      setHistoryOpen(false);
-      clearFillTimeouts();
-      appliedRef.current = false;
-      setFilledCount(0);
-      setLiveTranscript("");
-      setTranscriptMinimized(false);
-      const audio = await fetchHistoryAudio(entry.id);
-      if (!audio) {
-        console.warn("[Filly] No stored audio for history entry", entry.id);
-        return;
-      }
-      await filly.processAudioFile(audio, {
-        durationSeconds: entry.duration,
-      });
-    },
-    [clearFillTimeouts, filly],
-  );
-
   useEffect(() => clearFillTimeouts, [clearFillTimeouts]);
 
   const duration = filly.duration;
@@ -588,20 +542,14 @@ function FillyControllerInner({
   const secs = duration % 60;
   const timeStr = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 
-  // Idle state — floating pill FAB (bottom-right) + history
+  // Idle state — floating pill FAB (bottom-right)
   if (filly.status === "idle") {
-    // Filly is only offered when the facility has an active quota AND
-    // the user has enabled filly (+ consented) from their profile page.
-    if (
-      quota.isLoading ||
-      !quota.fillyEnabled ||
-      preference.isLoading ||
-      !preference.enabled
-    ) {
+    // Filly is only offered once the user has enabled it from their
+    // profile page. Whether they may use it at all is enforced separately
+    // by the backend's can_use_filly permission check.
+    if (preference.isLoading || !preference.enabled) {
       return null;
     }
-
-    const exceeded = quota.quotaExceeded;
 
     return (
       <div
@@ -614,59 +562,21 @@ function FillyControllerInner({
         title={t("ai_filly")}
       >
         <LongPressIndicator progress={fabDrag.longPressProgress} />
-        <HistoryPanel
-          open={historyOpen}
-          onOpenChange={setHistoryOpen}
-          onApply={
-            formState && setFormState ? handleApplyFromHistory : undefined
-          }
-          onReprocess={
-            quota.quotaExceeded
-              ? undefined
-              : (entry) => void handleReprocessFromHistory(entry)
-          }
-        />
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setHistoryOpen((prev) => !prev)}
-            className={cn(
-              "flex h-10 w-10 items-center justify-center rounded-full border bg-white text-gray-500 shadow-md transition-all hover:text-primary-700 hover:shadow-lg active:scale-95",
-              historyOpen
-                ? "border-primary-200 text-primary-700"
-                : "border-gray-100",
-            )}
-            title={t("filly_history")}
-            //TODO: add hidden when no history
-          >
-            <History className="h-4.5 w-4.5" />
-          </button>
-          <button
             onClick={handleStart}
-            disabled={filly.isStarting || Boolean(exceeded)}
+            disabled={filly.isStarting}
             className={cn(
               "group relative flex items-center gap-2 overflow-hidden rounded-full py-3 pr-5 pl-4 text-white shadow-lg transition-all",
-              exceeded
-                ? "cursor-not-allowed bg-gray-400 shadow-gray-400/30"
-                : "bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 shadow-primary-700/30",
-              !exceeded &&
-                (filly.isStarting
-                  ? "opacity-90"
-                  : "hover:shadow-xl hover:shadow-primary-700/40 hover:brightness-110 active:scale-95"),
+              "bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 shadow-primary-700/30",
+              filly.isStarting
+                ? "opacity-90"
+                : "hover:shadow-xl hover:shadow-primary-700/40 hover:brightness-110 active:scale-95",
             )}
-            title={
-              exceeded
-                ? exceeded === "facility"
-                  ? t("facility_quota_exceeded")
-                  : t("monthly_quota_exceeded")
-                : filly.isStarting
-                  ? t("starting")
-                  : t("start_ai_filly")
-            }
+            title={filly.isStarting ? t("starting") : t("start_ai_filly")}
           >
             {/* soft rotating glow */}
-            {!exceeded && (
-              <span className="filly-spin-slow pointer-events-none absolute -inset-16 scale-150 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.35),transparent)] opacity-60" />
-            )}
+            <span className="filly-spin-slow pointer-events-none absolute -inset-16 scale-150 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.35),transparent)] opacity-60" />
             <span className="relative flex h-6 w-6 items-center justify-center">
               {filly.isStarting ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -675,13 +585,9 @@ function FillyControllerInner({
               )}
             </span>
             <span className="relative text-sm font-semibold">
-              {exceeded
-                ? t("quota_exceeded")
-                : filly.isStarting
-                  ? t("starting")
-                  : t("ai_filly")}
+              {filly.isStarting ? t("starting") : t("ai_filly")}
             </span>
-            {!exceeded && <Sparkles className="relative h-4 w-4 opacity-80" />}
+            <Sparkles className="relative h-4 w-4 opacity-80" />
           </button>
         </div>
       </div>
