@@ -624,7 +624,7 @@ function FillyControllerInner({
         {/* Live transcript — collapsible, shown while processing/completed */}
         {showTranscript && !transcriptMinimized && (
           <div className="w-72 overflow-hidden rounded-2xl border border-gray-100 bg-white/95 shadow-xl backdrop-blur">
-            <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-3 py-2.5">
               <span className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wide text-gray-500 uppercase">
                 <FileText className="h-3 w-3" />
                 {t("transcript")}
