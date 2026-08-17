@@ -3,6 +3,7 @@ import {
   getEncounterIdFromUrl,
   getFacilityIdFromUrl,
 } from "./care-api";
+import { normalizeSnomedInfo } from "./deserializers";
 import {
   STRUCTURED_TEMPLATE_DESCRIPTIONS,
   STRUCTURED_TEMPLATE_EXAMPLES,
@@ -11,17 +12,21 @@ import {
 } from "./index";
 import {
   BOOLEAN_NOT_MENTIONED,
+  type Code,
   type SupportedStructuredType,
   isSupportedStructuredType,
 } from "./types";
+import { lookupCode } from "./valueset";
 
 export interface FieldFill {
   qId: string;
   questionType: string;
+  label: string;
   structuredType?: SupportedStructuredType;
   matchedValue: string | null;
   matchedNote: string | null;
   structuredValue?: unknown;
+  coding?: Code;
 }
 
 function normalizeLabel(s: string): string {
@@ -266,8 +271,13 @@ function walkQuestions(
 function findOtherInvestigationQuestion(
   formState: unknown,
   excludeQId: string,
-): { qId: string; questionType: string } | null {
-  let best: { qId: string; questionType: string; score: number } | null = null;
+): { qId: string; questionType: string; text: string } | null {
+  let best: {
+    qId: string;
+    questionType: string;
+    text: string;
+    score: number;
+  } | null = null;
 
   if (!Array.isArray(formState)) return null;
 
@@ -284,7 +294,8 @@ function findOtherInvestigationQuestion(
       const type = (question.type as string) || "";
       if (type !== "text" && type !== "string") return;
 
-      const normalized = normalizeLabel((question.text as string) || "");
+      const text = (question.text as string) || "";
+      const normalized = normalizeLabel(text);
       let score = 0;
       if (
         normalized.includes("other") &&
@@ -300,12 +311,14 @@ function findOtherInvestigationQuestion(
       }
 
       if (score > (best?.score ?? 0)) {
-        best = { qId: question.id as string, questionType: type, score };
+        best = { qId: question.id as string, questionType: type, text, score };
       }
     });
   }
 
-  return best ? { qId: best.qId, questionType: best.questionType } : null;
+  return best
+    ? { qId: best.qId, questionType: best.questionType, text: best.text }
+    : null;
 }
 
 function findOtherInvestigationLabel(
@@ -393,7 +406,14 @@ function resolveTriggerValues(
       extracted !== null &&
       extracted.toLowerCase() !== BOOLEAN_NOT_MENTIONED
     ) {
-      return [extracted];
+      // A choice trigger's freshly extracted text is a display label —
+      // enable_when.answer is written against the stored answer_option
+      // value, same reason the main fill path resolves choices too.
+      const resolved =
+        triggerQuestion.type === "choice"
+          ? resolveChoiceValue(triggerQuestion, extracted)
+          : extracted;
+      if (resolved !== null) return [resolved];
     }
   }
   return getCurrentResponseValues(formState, triggerQId);
@@ -486,6 +506,16 @@ interface StructuredCandidate {
   current: unknown;
 }
 
+interface ChoiceCodingCandidate {
+  qId: string;
+  questionType: string;
+  questionText: string;
+  code: string;
+  displayNames: string[];
+  valueSetSlug: string;
+  matchedNote: string | null;
+}
+
 export async function collectFieldsToFill(
   formState: unknown,
   data: Record<string, unknown>,
@@ -505,6 +535,9 @@ export async function collectFieldsToFill(
   // can run concurrently below rather than stacking one question's network
   // round-trips behind another's.
   const structuredCandidates: StructuredCandidate[] = [];
+  // Same reasoning for a "choice" question backed by an open terminology
+  // (answer_value_set) instead of a fixed answer_option list.
+  const choiceCodingCandidates: ChoiceCodingCandidate[] = [];
 
   for (const group of formState) {
     const questions = (group as Record<string, unknown>).questionnaire as
@@ -520,7 +553,19 @@ export async function collectFieldsToFill(
       const qId = r.question_id as string;
       const question = findQuestionById(qList, qId);
       if (!question || shouldSkipQuestion(question, r)) continue;
-      if (!isQuestionEnabled(question, qList, formState, data)) continue;
+
+      const enabled = isQuestionEnabled(question, qList, formState, data);
+      if (
+        import.meta.env.DEV &&
+        Array.isArray(question.enable_when) &&
+        question.enable_when.length
+      ) {
+        console.log(
+          `[Filly] enable_when("${question.text}") -> ${enabled ? "enabled" : "disabled"}`,
+          question.enable_when,
+        );
+      }
+      if (!enabled) continue;
 
       const questionText = (question.text as string) || "";
       const structuredType = (question.structured_type || r.structured_type) as
@@ -555,6 +600,46 @@ export async function collectFieldsToFill(
       const matchedValue =
         rawValue?.toLowerCase() === BOOLEAN_NOT_MENTIONED ? null : rawValue;
 
+      // A choice backed by an open terminology (no fixed answer_option list)
+      // needs an async valueset lookup to resolve to a real coding — collect
+      // it for the concurrent pass below, same as structured candidates.
+      const answerValueSet = question.answer_value_set as string | undefined;
+      const hasFixedOptions =
+        Array.isArray(question.answer_option) &&
+        (question.answer_option as unknown[]).length > 0;
+
+      if (questionType === "choice" && answerValueSet && !hasFixedOptions) {
+        // The answer is a {code, display_names} object, not a plain scalar
+        // (matchVitalToQuestion would reject it as JSON-looking text) — same
+        // shape resolveOptionalCode expects for medication/diagnosis/etc.
+        const label = findMatchingLabel(questionText, data);
+        const parsed = label ? parseStructuredRaw(data[label]) : null;
+        const info = parsed?.[0]
+          ? normalizeSnomedInfo(parsed[0] as Record<string, unknown>)
+          : null;
+
+        if (info && (info.code || info.display_names.length)) {
+          choiceCodingCandidates.push({
+            qId,
+            questionType,
+            questionText,
+            code: info.code,
+            displayNames: info.display_names,
+            valueSetSlug: answerValueSet,
+            matchedNote,
+          });
+        } else if (matchedNote !== null) {
+          fieldsToFill.push({
+            qId,
+            questionType,
+            label: questionText,
+            matchedValue: null,
+            matchedNote,
+          });
+        }
+        continue;
+      }
+
       // An unrecognized choice label is a hallucination, not a valid
       // selection — never insert it, but a note (if any) can still land.
       const resolvedValue =
@@ -567,6 +652,7 @@ export async function collectFieldsToFill(
       fieldsToFill.push({
         qId,
         questionType,
+        label: questionText,
         matchedValue: resolvedValue,
         matchedNote,
       });
@@ -620,6 +706,7 @@ export async function collectFieldsToFill(
     fieldsToFill.push({
       qId: candidate.qId,
       questionType: candidate.questionType,
+      label: candidate.questionText,
       structuredType: candidate.structuredType,
       matchedValue: null,
       matchedNote: supplementalNote ? `Also order: ${supplementalNote}` : null,
@@ -644,12 +731,44 @@ export async function collectFieldsToFill(
           fieldsToFill.push({
             qId: fallbackQuestion.qId,
             questionType: fallbackQuestion.questionType,
+            label: fallbackQuestion.text,
             matchedValue: otherInvestigationText,
             matchedNote: null,
           });
         }
       }
     }
+  }
+
+  const choiceCodingResults = await Promise.all(
+    choiceCodingCandidates.map(async (candidate) => {
+      try {
+        const code = await lookupCode(
+          candidate.code,
+          candidate.displayNames,
+          candidate.valueSetSlug,
+        );
+        return { candidate, code };
+      } catch (err) {
+        console.warn(
+          `[Filly] Skipping valueset choice for "${candidate.qId}":`,
+          err,
+        );
+        return null;
+      }
+    }),
+  );
+
+  for (const result of choiceCodingResults) {
+    if (!result?.code) continue;
+    fieldsToFill.push({
+      qId: result.candidate.qId,
+      questionType: result.candidate.questionType,
+      label: result.candidate.questionText,
+      matchedValue: null,
+      matchedNote: result.candidate.matchedNote,
+      coding: result.code,
+    });
   }
 
   return fieldsToFill;
@@ -672,7 +791,12 @@ export function applyFieldToState(
 
         const updated: Record<string, unknown> = { ...resp };
 
-        if (field.structuredType && field.structuredValue !== undefined) {
+        if (field.coding) {
+          updated.values = [{ type: "quantity", coding: field.coding }];
+        } else if (
+          field.structuredType &&
+          field.structuredValue !== undefined
+        ) {
           updated.values = [
             {
               type: field.structuredType,

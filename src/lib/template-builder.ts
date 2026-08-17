@@ -15,6 +15,7 @@ interface FormQuestion {
   structured_type?: string;
   questions?: FormQuestion[];
   answer_option?: Array<{ value: string; display?: string }>;
+  answer_value_set?: string;
   max_length?: number;
 }
 
@@ -24,6 +25,7 @@ export interface FormField {
   type: string;
   structuredType?: SupportedStructuredType;
   options?: string[];
+  answerValueSet?: string;
 }
 
 /**
@@ -86,6 +88,10 @@ function collectFields(questions: FormQuestion[], out: FormField[]) {
 
     if (q.answer_option?.length) {
       field.options = q.answer_option.map((o) => o.display || String(o.value));
+    } else if (q.type === "choice" && q.answer_value_set) {
+      // No fixed option list — the valid answers come from an external
+      // terminology (e.g. SNOMED), resolved later against answer_value_set.
+      field.answerValueSet = q.answer_value_set;
     }
 
     out.push(field);
@@ -165,6 +171,20 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
             "option, if explicitly mentioned.",
         ),
       );
+    } else if (f.type === "choice" && f.answerValueSet) {
+      // Open-ended terminology (SNOMED, etc.) — too large to enumerate, so
+      // ask for a code/display_names object and resolve it via the same
+      // search-and-select valueset lookup used for medication/diagnosis/etc.
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "string",
+        description:
+          `The clinical term the clinician used for "${f.label}", as JSON: ` +
+          '{"code": "<code if known, else empty string>", "display_names": ' +
+          '["<exact term used>", "<a close synonym, if any>"]}. Only ' +
+          "include if explicitly mentioned.",
+      });
     } else {
       specs.push({ key: f.label, label: f.label, type: "string" });
     }

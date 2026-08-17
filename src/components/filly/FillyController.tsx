@@ -20,12 +20,12 @@ import {
   resolveCurrentUserId,
 } from "@/lib/fab-position";
 import {
+  type FieldFill,
   applyFieldToState,
   collectFieldsToFill,
-  parseStructuredRaw,
 } from "@/lib/structured/fill";
 import type { FillyResult } from "@/lib/types/filly";
-import { cn, isEmptyExtractedValue } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 import { useFilly } from "@/hooks/useFilly";
 import { useFillyPreference } from "@/hooks/useFillyPreference";
@@ -350,6 +350,10 @@ function FillyControllerInner({
   const appliedRef = useRef(false);
   const fillTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [filledCount, setFilledCount] = useState(0);
+  // The real, post-resolution fields — used for the preview instead of raw
+  // extracted data, since a hallucinated/unresolved/disabled value never
+  // reaches here even though Medispeak's raw output had something for it.
+  const [appliedFields, setAppliedFields] = useState<FieldFill[]>([]);
 
   // The user's own filly opt-in from the profile page.
   const preference = useFillyPreference();
@@ -395,6 +399,7 @@ function FillyControllerInner({
         }
 
         setFilledCount(0);
+        setAppliedFields(fieldsToFill);
 
         fieldsToFill.forEach((field, index) => {
           const timeoutId = setTimeout(() => {
@@ -520,6 +525,7 @@ function FillyControllerInner({
     clearFillTimeouts();
     appliedRef.current = false;
     setFilledCount(0);
+    setAppliedFields([]);
     setTranscriptMinimized(false);
     await filly.startRecording();
   };
@@ -842,42 +848,37 @@ function FillyControllerInner({
                 {t("extracted_values")}
               </span>
               <div className="mt-1 space-y-1">
-                {Object.entries(filly.result.structuredData).map(
-                  ([key, val]) =>
-                    key !== "clinical_notes" &&
-                    !key.endsWith("_note") &&
-                    !isEmptyExtractedValue(val) && (
-                      <div
-                        key={key}
-                        className="flex items-center justify-between rounded bg-gray-50 px-2 py-1"
-                      >
-                        <span className="text-xs text-gray-500">{key}</span>
-                        <span className="text-xs font-medium text-gray-900">
-                          {(() => {
-                            const structured = parseStructuredRaw(val);
-                            if (structured) {
-                              return t("n_filled", { n: structured.length });
-                            }
-                            if (Array.isArray(val)) {
-                              return t("n_filled", { n: val.length });
-                            }
-                            return val !== null && typeof val === "object"
-                              ? t("n_filled", { n: 1 })
-                              : String(val);
-                          })()}
-                          {filly.result?.structuredData?.[`${key}_note`] !=
-                            null && (
-                            <span className="ml-1 font-normal text-gray-500">
-                              (
-                              {String(
-                                filly.result.structuredData[`${key}_note`],
-                              )}
-                              )
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    ),
+                {appliedFields.length === 0 ? (
+                  <p className="text-xs text-gray-400">
+                    {t("no_matching_fields")}
+                  </p>
+                ) : (
+                  appliedFields.map((field, i) => (
+                    <div
+                      key={`${field.qId}-${i}`}
+                      className="flex items-center justify-between rounded bg-gray-50 px-2 py-1"
+                    >
+                      <span className="text-xs text-gray-500">
+                        {field.label}
+                      </span>
+                      <span className="text-xs font-medium text-gray-900">
+                        {field.structuredValue
+                          ? t("n_filled", {
+                              n: Array.isArray(field.structuredValue)
+                                ? field.structuredValue.length
+                                : 1,
+                            })
+                          : field.coding
+                            ? field.coding.display
+                            : (field.matchedValue ?? t("n_filled", { n: 1 }))}
+                        {field.matchedNote && (
+                          <span className="ml-1 font-normal text-gray-500">
+                            ({field.matchedNote})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
