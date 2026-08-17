@@ -132,6 +132,32 @@ export function matchNoteToQuestion(
   return text;
 }
 
+// CARE stores a choice response as the option's `value`, not its display
+// label (see ChoiceQuestion.tsx) — Medispeak is prompted with display labels,
+// so its answer must be resolved back to the real stored value. Returns null
+// if it doesn't match any real option (a hallucinated/paraphrased answer),
+// so an invalid choice is never inserted.
+function resolveChoiceValue(
+  question: Record<string, unknown>,
+  matchedValue: string,
+): string | null {
+  const options = question.answer_option as
+    | Array<{ value: unknown; display?: string }>
+    | undefined;
+  if (!options?.length) return matchedValue;
+
+  const normalized = normalizeLabel(matchedValue);
+  const match = options.find((o) => {
+    const display = o.display || String(o.value);
+    return (
+      normalizeLabel(display) === normalized ||
+      normalizeLabel(String(o.value)) === normalized
+    );
+  });
+
+  return match ? String(match.value) : null;
+}
+
 function tryParseJSON(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -519,30 +545,29 @@ export async function collectFieldsToFill(
         continue;
       }
 
-      const matchedValue = matchVitalToQuestion(questionText, data);
+      const rawValue = matchVitalToQuestion(questionText, data);
       const matchedNote = matchNoteToQuestion(questionText, data);
       const questionType = (question.type as string) || "";
 
-      if (
-        questionType === "boolean" &&
-        matchedValue?.toLowerCase() === BOOLEAN_NOT_MENTIONED
-      ) {
-        if (matchedNote === null) continue;
-        fieldsToFill.push({
-          qId,
-          questionType,
-          matchedValue: null,
-          matchedNote,
-        });
-        continue;
-      }
+      // "not_mentioned" is a sentinel meaning "no answer was given" — for
+      // any question type (a stray fuzzy-match can surface it outside
+      // boolean fields too), never insert it as if it were real data.
+      const matchedValue =
+        rawValue?.toLowerCase() === BOOLEAN_NOT_MENTIONED ? null : rawValue;
 
-      if (matchedValue === null && matchedNote === null) continue;
+      // An unrecognized choice label is a hallucination, not a valid
+      // selection — never insert it, but a note (if any) can still land.
+      const resolvedValue =
+        questionType === "choice" && matchedValue !== null
+          ? resolveChoiceValue(question, matchedValue)
+          : matchedValue;
+
+      if (resolvedValue === null && matchedNote === null) continue;
 
       fieldsToFill.push({
         qId,
         questionType,
-        matchedValue,
+        matchedValue: resolvedValue,
         matchedNote,
       });
     }

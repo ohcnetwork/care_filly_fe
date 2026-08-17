@@ -125,6 +125,13 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         enum: ["true", "false", BOOLEAN_NOT_MENTIONED],
         description: `Whether the clinician explicitly stated this. Use "${BOOLEAN_NOT_MENTIONED}" if not mentioned — never guess "false".`,
       });
+      specs.push(
+        noteSpec(
+          f.label,
+          `Additional commentary about "${f.label}" beyond yes/no (e.g. ` +
+            "timing, severity, context) if explicitly mentioned.",
+        ),
+      );
     } else if (f.type === "decimal" || f.type === "integer") {
       specs.push({
         key: f.label,
@@ -135,12 +142,15 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
           `term (e.g. "normal", "elevated") with no number, leave this out ` +
           `and use "${f.label}_note" instead.`,
       });
-      specs.push({
-        key: `${f.label}_note`,
-        label: `${f.label} note`,
-        type: "string",
-        description: `Commentary for "${f.label}" (e.g. "normal") when no numeric value was stated. Only include if explicitly mentioned.`,
-      });
+      specs.push(
+        noteSpec(
+          f.label,
+          `Descriptive/qualitative commentary for "${f.label}" (e.g. "normal", ` +
+            `"very high", "borderline") if the clinician gave any — whether or ` +
+            'not they also gave a number (e.g. "120, very high" -> number 120, ' +
+            `note "very high"). Only include if explicitly mentioned.`,
+        ),
+      );
     } else if (f.type === "choice" && f.options?.length) {
       specs.push({
         key: f.label,
@@ -148,9 +158,27 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         type: "single_select",
         enum: f.options,
       });
+      specs.push(
+        noteSpec(
+          f.label,
+          `Additional commentary about "${f.label}" beyond the selected ` +
+            "option, if explicitly mentioned.",
+        ),
+      );
     } else {
       specs.push({ key: f.label, label: f.label, type: "string" });
     }
   }
   return specs;
+}
+
+// Free text fields already hold arbitrary commentary in their own value, so
+// only discrete-answer fields (boolean/number/choice) get a note companion.
+function noteSpec(label: string, description: string): MedispeakFieldSpec {
+  return {
+    key: `${label}_note`,
+    label: `${label} note`,
+    type: "string",
+    description,
+  };
 }
