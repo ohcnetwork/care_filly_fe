@@ -184,6 +184,30 @@ function getCurrentResponseValue(
   return null;
 }
 
+// Like getCurrentResponseValue, but keeps every value — needed for
+// enable_when, since CARE checks a multi-select trigger's full value set.
+function getCurrentResponseValues(formState: unknown, qId: string): unknown[] {
+  if (!Array.isArray(formState)) return [];
+
+  for (const group of formState) {
+    const responses = (group as Record<string, unknown>).responses;
+    if (!Array.isArray(responses)) continue;
+
+    const response = responses.find(
+      (r) => (r as Record<string, unknown>).question_id === qId,
+    ) as Record<string, unknown> | undefined;
+    if (!response) continue;
+
+    const values = response.values;
+    if (!Array.isArray(values)) return [];
+    return values
+      .map((v) => (v as Record<string, unknown>).value)
+      .filter((v) => v != null);
+  }
+
+  return [];
+}
+
 function findQuestionById(
   questions: unknown[],
   id: string,
@@ -299,6 +323,116 @@ function shouldSkipQuestion(
   return false;
 }
 
+function buildLinkIdMap(questions: unknown[]): Map<string, string> {
+  const map = new Map<string, string>();
+  walkQuestions(questions, (question) => {
+    if (question.link_id)
+      map.set(question.link_id as string, question.id as string);
+  });
+  return map;
+}
+
+const ENABLE_WHEN_TRUE_STRINGS = new Set(["true", "on", "ok", "y", "yes", "1"]);
+const ENABLE_WHEN_FALSE_STRINGS = new Set(["false", "off", "no", "n", "0"]);
+
+function normalizeEnableWhenValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (ENABLE_WHEN_TRUE_STRINGS.has(v)) return true;
+    if (ENABLE_WHEN_FALSE_STRINGS.has(v)) return false;
+  }
+  return value;
+}
+
+function toDecimalOrNull(value: unknown): number | null {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+/** This pass's freshly extracted value for the trigger question takes
+ * priority, falling back to its existing saved response (all values, so
+ * multi-select triggers are checked in full like CARE's backend does). */
+function resolveTriggerValues(
+  triggerQuestion: Record<string, unknown> | null,
+  triggerQId: string,
+  formState: unknown,
+  data: Record<string, unknown>,
+): unknown[] {
+  if (triggerQuestion) {
+    const extracted = matchVitalToQuestion(
+      (triggerQuestion.text as string) || "",
+      data,
+    );
+    if (
+      extracted !== null &&
+      extracted.toLowerCase() !== BOOLEAN_NOT_MENTIONED
+    ) {
+      return [extracted];
+    }
+  }
+  return getCurrentResponseValues(formState, triggerQId);
+}
+
+/** Mirrors CARE's `is_question_enabled` so a question is never filled with a
+ * value its `enable_when` conditions would reject on submit. */
+function isQuestionEnabled(
+  question: Record<string, unknown>,
+  qList: unknown[],
+  formState: unknown,
+  data: Record<string, unknown>,
+): boolean {
+  const conditions = question.enable_when as
+    | { question: string; operator: string; answer: unknown }[]
+    | undefined;
+  if (!conditions?.length) return true;
+
+  const linkIdToId = buildLinkIdMap(qList);
+  const behavior = (question.enable_behavior as string) || "all";
+
+  const results = conditions.map((condition) => {
+    const triggerQId = linkIdToId.get(condition.question);
+    if (!triggerQId) return false;
+
+    const triggerQuestion = findQuestionById(qList, triggerQId);
+    const values = resolveTriggerValues(
+      triggerQuestion,
+      triggerQId,
+      formState,
+      data,
+    ).map(normalizeEnableWhenValue);
+    const expected = normalizeEnableWhenValue(condition.answer);
+
+    switch (condition.operator) {
+      case "exists":
+        return expected ? values.length > 0 : values.length === 0;
+      case "equals":
+        return values.includes(expected);
+      case "not_equals":
+        return values.length > 0 && values.every((v) => v !== expected);
+      case "greater":
+      case "less":
+      case "greater_or_equals":
+      case "less_or_equals": {
+        const expectedNum = toDecimalOrNull(expected);
+        if (expectedNum === null) return false;
+        return values.some((v) => {
+          const num = toDecimalOrNull(v);
+          if (num === null) return false;
+          if (condition.operator === "greater") return num > expectedNum;
+          if (condition.operator === "less") return num < expectedNum;
+          if (condition.operator === "greater_or_equals")
+            return num >= expectedNum;
+          return num <= expectedNum;
+        });
+      }
+      default:
+        return false;
+    }
+  });
+
+  return behavior === "all" ? results.every(Boolean) : results.some(Boolean);
+}
+
 function extractComplaintText(
   data: Record<string, unknown>,
 ): string | undefined {
@@ -360,6 +494,7 @@ export async function collectFieldsToFill(
       const qId = r.question_id as string;
       const question = findQuestionById(qList, qId);
       if (!question || shouldSkipQuestion(question, r)) continue;
+      if (!isQuestionEnabled(question, qList, formState, data)) continue;
 
       const questionText = (question.text as string) || "";
       const structuredType = (question.structured_type || r.structured_type) as
