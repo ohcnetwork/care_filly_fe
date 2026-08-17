@@ -87,24 +87,68 @@ export async function searchByDisplay(
     if (!display?.trim()) continue;
     try {
       const results = await expandValueSet(valueSetSlug, display, 15);
+      if (!results.length) continue;
+
       const normalized = display.toLowerCase();
-      const best =
-        results.find((r) => r.display.toLowerCase() === normalized) ??
-        results.find((r) => {
-          const d = r.display.toLowerCase();
-          return d.includes(normalized) || normalized.includes(d);
-        }) ??
-        results[0];
-      if (best) {
-        return {
-          system: best.system,
-          code: best.code,
-          display: best.display,
-        };
+      let best = results[0];
+      let bestScore = bestResultScore(results[0], normalized);
+      for (const result of results.slice(1)) {
+        const resultScore = bestResultScore(result, normalized);
+        if (resultScore > bestScore) {
+          best = result;
+          bestScore = resultScore;
+        }
       }
+
+      return {
+        system: best.system,
+        code: best.code,
+        display: best.display,
+      };
     } catch (err) {
       console.warn("[Filly] searchByDisplay failed:", err);
     }
   }
   return null;
+}
+
+// Ported from care_fe's ValueSetSearchContent (ENG-268)
+const EXCLUDED_DESIGNATION_USE_CODES = new Set([
+  "900000000000003001", // SNOMED Fully specified name
+  "FullySpecifiedName", // LOINC Fully specified name
+]);
+
+function getSynonyms(
+  result: ValueSetExpandResult["results"][number],
+): string[] {
+  if (!result.designation?.length) return [];
+  return result.designation
+    .filter(
+      (d) =>
+        d.value &&
+        d.value !== result.display &&
+        (!d.language || d.language.startsWith("en")) &&
+        (!d.use?.code || !EXCLUDED_DESIGNATION_USE_CODES.has(d.use.code)),
+    )
+    .map((d) => d.value);
+}
+
+// 3 = starts with, 2 = word-boundary match, 1 = substring, 0 = no match.
+function scoreMatch(text: string, search: string): number {
+  const t = text.toLowerCase();
+  if (t.startsWith(search)) return 3;
+  if (t.split(/\s+/).some((word) => word.startsWith(search))) return 2;
+  if (t.includes(search)) return 1;
+  return 0;
+}
+
+function bestResultScore(
+  result: ValueSetExpandResult["results"][number],
+  search: string,
+): number {
+  let best = scoreMatch(result.display, search);
+  for (const synonym of getSynonyms(result)) {
+    best = Math.max(best, scoreMatch(synonym, search));
+  }
+  return best;
 }
