@@ -59,6 +59,21 @@ function describeStopError(err: unknown): string {
   return err instanceof Error ? err.message : "Failed to process recording";
 }
 
+/** The backend transcribes segments asynchronously; on long recordings the
+ * last segment(s) can still be processing right as we commit. It supports
+ * this explicitly — re-committing retries exactly the still-pending
+ * segments (see `Scribe::Orchestrator#transcript_from_segments!`) — so this
+ * specific failure is recoverable by retrying, unlike any other. */
+function isRecommittableFailure(data: MedispeakResult): boolean {
+  return (
+    data.status === "failed" &&
+    data.errors.some((e) => e.includes("re-commit to retry"))
+  );
+}
+
+const COMMIT_RETRY_ATTEMPTS = 3;
+const COMMIT_RETRY_DELAY_MS = 1500;
+
 interface StartOptions {
   encounterId?: string;
   templateIds?: string[];
@@ -217,9 +232,9 @@ export function useFilly({
         onTranscript: (transcript) => onTranscript?.(transcript),
       });
       if (data.transcript) onTranscript?.(data.transcript);
-      finishWithMedispeakResult(data);
+      return data;
     },
-    [finishWithMedispeakResult, onTranscript],
+    [onTranscript],
   );
 
   // ── recording lifecycle ──────────────────────────────────────────────────
@@ -305,14 +320,30 @@ export function useFilly({
       pendingUploadsRef.current = [];
 
       await commitMedispeakSession(handle);
-      await awaitMedispeakResult(handle);
+      let data = await awaitMedispeakResult(handle);
+      for (
+        let attempt = 0;
+        isRecommittableFailure(data) && attempt < COMMIT_RETRY_ATTEMPTS;
+        attempt++
+      ) {
+        await new Promise((r) => setTimeout(r, COMMIT_RETRY_DELAY_MS));
+        await commitMedispeakSession(handle);
+        data = await awaitMedispeakResult(handle);
+      }
+      finishWithMedispeakResult(data);
     } catch (err) {
       const message = describeStopError(err);
       setError(message);
       updateStatus("failed");
       onError?.(err instanceof Error ? err : new Error(message));
     }
-  }, [stopTimer, updateStatus, awaitMedispeakResult, onError]);
+  }, [
+    stopTimer,
+    updateStatus,
+    awaitMedispeakResult,
+    finishWithMedispeakResult,
+    onError,
+  ]);
 
   const cancelRecording = useCallback(async () => {
     recorderRef.current?.cancel();

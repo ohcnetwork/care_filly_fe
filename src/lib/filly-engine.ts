@@ -18,7 +18,22 @@ const DEBUG = import.meta.env.DEV;
 // Speech below this many seconds is treated as a VAD misfire and dropped —
 // avoids uploading coughs/clicks as their own chunk.
 const MIN_UTTERANCE_SECONDS = 0.4;
+// Hard cap per uploaded chunk. Real-time ASR backends (e.g. Sarvam Saaras)
+
+const MAX_CHUNK_SECONDS = 25;
 const VAD_SAMPLE_RATE = 16000;
+
+/** Splits `samples` into windows no longer than MAX_CHUNK_SECONDS. */
+function* capSegments(samples: Float32Array): Generator<Float32Array> {
+  const maxLen = Math.floor(MAX_CHUNK_SECONDS * VAD_SAMPLE_RATE);
+  if (samples.length <= maxLen) {
+    yield samples;
+    return;
+  }
+  for (let offset = 0; offset < samples.length; offset += maxLen) {
+    yield samples.subarray(offset, Math.min(offset + maxLen, samples.length));
+  }
+}
 
 export interface VadRecorderCallbacks {
   /** A completed speech utterance, ready to upload as a chunk. */
@@ -61,9 +76,11 @@ export class VadRecorder {
         if (this.paused) return;
         if (audio.length < MIN_UTTERANCE_SECONDS * VAD_SAMPLE_RATE) return;
         try {
-          const wavBuffer = utils.encodeWAV(audio);
-          const blob = new Blob([wavBuffer], { type: "audio/wav" });
-          this.callbacks.onSpeechChunk(blob, this.chunkIndex++);
+          for (const segment of capSegments(audio)) {
+            const wavBuffer = utils.encodeWAV(segment);
+            const blob = new Blob([wavBuffer], { type: "audio/wav" });
+            this.callbacks.onSpeechChunk(blob, this.chunkIndex++);
+          }
         } catch (err) {
           if (DEBUG) console.warn("[Filly] WAV encode failed:", err);
         }
