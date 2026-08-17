@@ -18,8 +18,7 @@ const DEBUG = import.meta.env.DEV;
 // Speech below this many seconds is treated as a VAD misfire and dropped —
 // avoids uploading coughs/clicks as their own chunk.
 const MIN_UTTERANCE_SECONDS = 0.4;
-// Hard cap per uploaded chunk. Real-time ASR backends (e.g. Sarvam Saaras)
-
+// Hard cap per chunk — Sarvam's ASR REST endpoint rejects audio over ~30s.
 const MAX_CHUNK_SECONDS = 25;
 const VAD_SAMPLE_RATE = 16000;
 

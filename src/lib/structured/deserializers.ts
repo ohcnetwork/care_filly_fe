@@ -18,6 +18,25 @@ interface DeserializeResult<T> {
   errors: string[];
 }
 
+/** Drops items already in `existingCodes` and duplicates within `parsed`
+ * itself — a single extraction can return the same finding twice. */
+function dedupeByCode<T>(
+  parsed: (T | undefined)[],
+  existingCodes: Set<string>,
+  codeOf: (item: T) => string,
+): T[] {
+  const seen = new Set(existingCodes);
+  const result: T[] = [];
+  for (const item of parsed) {
+    if (!item) continue;
+    const code = codeOf(item);
+    if (seen.has(code)) continue;
+    seen.add(code);
+    result.push(item);
+  }
+  return result;
+}
+
 export function normalizeDisplayNames(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
@@ -129,9 +148,7 @@ export async function deserializeSymptoms(
 
   const merged = [
     ...current,
-    ...parsed.filter(
-      (s): s is NonNullable<typeof s> => !!s && !currentCodes.has(s.code.code),
-    ),
+    ...dedupeByCode(parsed, currentCodes, (s) => s.code.code),
   ];
 
   return { data: merged, errors };
@@ -192,9 +209,7 @@ export async function deserializeDiagnosis(
 
   const merged = [
     ...current,
-    ...parsed.filter(
-      (s): s is NonNullable<typeof s> => !!s && !currentCodes.has(s.code.code),
-    ),
+    ...dedupeByCode(parsed, currentCodes, (s) => s.code.code),
   ];
 
   return { data: merged, errors };
@@ -257,9 +272,7 @@ export async function deserializeAllergies(
 
   const merged = [
     ...current,
-    ...parsed.filter(
-      (s): s is NonNullable<typeof s> => !!s && !currentCodes.has(s.code.code),
-    ),
+    ...dedupeByCode(parsed, currentCodes, (s) => s.code.code),
   ];
 
   return { data: merged, errors };
@@ -328,10 +341,7 @@ export async function deserializeMedicationStatements(
 
   const merged = [
     ...current,
-    ...parsed.filter(
-      (s): s is NonNullable<typeof s> =>
-        !!s && !currentCodes.has(s.medication.code),
-    ),
+    ...dedupeByCode(parsed, currentCodes, (s) => s.medication.code),
   ];
 
   return { data: merged, errors };

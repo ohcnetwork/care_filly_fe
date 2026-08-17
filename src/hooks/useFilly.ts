@@ -59,11 +59,8 @@ function describeStopError(err: unknown): string {
   return err instanceof Error ? err.message : "Failed to process recording";
 }
 
-/** The backend transcribes segments asynchronously; on long recordings the
- * last segment(s) can still be processing right as we commit. It supports
- * this explicitly — re-committing retries exactly the still-pending
- * segments (see `Scribe::Orchestrator#transcript_from_segments!`) — so this
- * specific failure is recoverable by retrying, unlike any other. */
+/** Segment transcription runs async server-side; re-committing retries
+ * exactly the still-pending segments, so this failure alone is recoverable. */
 function isRecommittableFailure(data: MedispeakResult): boolean {
   return (
     data.status === "failed" &&

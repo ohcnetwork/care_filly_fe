@@ -38,15 +38,21 @@ export function findMatchingLabel(
   scalarOnly = false,
 ): string | null {
   const normalizedQ = normalizeLabel(questionText);
-
-  for (const label of Object.keys(data)) {
-    if (!isValueDataKey(label)) continue;
-
+  const candidateKeys = Object.keys(data).filter((label) => {
+    if (!isValueDataKey(label)) return false;
     const raw = data[label];
-    if (scalarOnly && raw != null && typeof raw === "object") continue;
+    return !(scalarOnly && raw != null && typeof raw === "object");
+  });
 
+  // Prefer an exact match over a loose substring one, so a stray key like
+  // "additional_symptoms" can't win over the real "symptom" key.
+  const exact = candidateKeys.find(
+    (label) => normalizeLabel(label) === normalizedQ,
+  );
+  if (exact) return exact;
+
+  for (const label of candidateKeys) {
     const normalizedLabel = normalizeLabel(label);
-
     if (
       normalizedQ.includes(normalizedLabel) ||
       normalizedLabel.includes(normalizedQ)
@@ -56,15 +62,18 @@ export function findMatchingLabel(
   }
 
   if (normalizedQ.includes("systolic") || normalizedQ.includes("diastolic")) {
-    for (const label of Object.keys(data)) {
-      if (!isValueDataKey(label)) continue;
-      const raw = data[label];
-      if (scalarOnly && raw != null && typeof raw === "object") continue;
+    for (const label of candidateKeys) {
       if (normalizeLabel(label).includes("bloodpressure")) return label;
     }
   }
 
   return null;
+}
+
+// Rejects a value that's itself serialized structured-data JSON (a stray
+// fuzzy-match leak), so it never gets written into a plain text/note field.
+function looksLikeSerializedStructuredData(text: string): boolean {
+  return /^[[{]/.test(text) && parseStructuredRaw(text) !== null;
 }
 
 function extractScalarValue(raw: unknown): string | null {
@@ -77,8 +86,7 @@ function extractScalarValue(raw: unknown): string | null {
   if (Array.isArray(raw)) return null;
   const text = String(raw).trim();
   if (text === "") return null;
-  //to reject raw json
-  if (/^[[{]/.test(text) && parseStructuredRaw(text) !== null) return null;
+  if (looksLikeSerializedStructuredData(text)) return null;
   return text;
 }
 
@@ -118,8 +126,10 @@ export function matchNoteToQuestion(
       : undefined;
 
   const note = wrappedNote ?? data[`${label}_note`];
-  if (note == null || String(note).trim() === "") return null;
-  return String(note);
+  if (note == null) return null;
+  const text = String(note).trim();
+  if (text === "" || looksLikeSerializedStructuredData(text)) return null;
+  return text;
 }
 
 function tryParseJSON(text: string): unknown {
