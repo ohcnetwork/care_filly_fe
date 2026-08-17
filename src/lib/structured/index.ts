@@ -141,15 +141,15 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
   string
 > = {
   symptom:
-    "array of symptoms; snomed_info required; onset_datetime as date only YYYY-MM-DD (if patient says '2 weeks ago', subtract from today — do NOT use today's date unless onset is today)",
+    "array of symptoms; snomed_info required; onset_datetime as date only YYYY-MM-DD (if patient says '2 weeks ago', subtract from today; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
   diagnosis:
-    "array of diagnoses; snomed_info required; onset_datetime as date only YYYY-MM-DD (compute from relative phrases like '3 days ago', not today unless onset is today)",
+    "array of diagnoses; snomed_info required; onset_datetime as date only YYYY-MM-DD (compute from relative phrases like '3 days ago'; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
   allergy_intolerance:
     "array of allergies/intolerances; snomed_info from substance hierarchy",
   medication_statement:
     "array of medications the patient is currently taking (not new prescriptions)",
   medication_request:
-    "array of NEW prescriptions; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated",
+    "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated",
   service_request:
     "array of investigations/lab tests/imaging ordered; each needs activity_definition with title or display_names (e.g. Lipid Panel, CBC, Chest X-Ray); put catalog items here; put anything NOT in the facility catalog under the separate 'Other Investigation' field key or in the free-text note",
 };

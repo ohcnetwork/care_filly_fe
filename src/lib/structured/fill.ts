@@ -76,7 +76,10 @@ function extractScalarValue(raw: unknown): string | null {
   }
   if (Array.isArray(raw)) return null;
   const text = String(raw).trim();
-  return text === "" ? null : text;
+  if (text === "") return null;
+  //to reject raw json
+  if (/^[[{]/.test(text) && parseStructuredRaw(text) !== null) return null;
+  return text;
 }
 
 export function matchVitalToQuestion(
