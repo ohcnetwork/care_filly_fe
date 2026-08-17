@@ -126,7 +126,21 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         description: `Whether the clinician explicitly stated this. Use "${BOOLEAN_NOT_MENTIONED}" if not mentioned — never guess "false".`,
       });
     } else if (f.type === "decimal" || f.type === "integer") {
-      specs.push({ key: f.label, label: f.label, type: "number" });
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "number",
+        description:
+          "Numeric value only. If the clinician only gave a descriptive " +
+          `term (e.g. "normal", "elevated") with no number, leave this out ` +
+          `and use "${f.label}_note" instead.`,
+      });
+      specs.push({
+        key: `${f.label}_note`,
+        label: `${f.label} note`,
+        type: "string",
+        description: `Commentary for "${f.label}" (e.g. "normal") when no numeric value was stated. Only include if explicitly mentioned.`,
+      });
     } else if (f.type === "choice" && f.options?.length) {
       specs.push({
         key: f.label,
