@@ -18,6 +18,11 @@ interface FormQuestion {
   answer_option?: Array<{ value: string; display?: string }>;
   answer_value_set?: string;
   max_length?: number;
+  // CARE's Question.unit / Question.answer_unit — a Code ({system, code,
+  // display}) distinguishing unit variants of the same question text (e.g.
+  // Temperature in °C vs °F).
+  unit?: { code?: string; display?: string };
+  answer_unit?: { code?: string; display?: string };
 }
 
 export interface FormField {
@@ -28,6 +33,15 @@ export interface FormField {
   structuredType?: SupportedStructuredType;
   options?: string[];
   answerValueSet?: string;
+  /** Human-readable unit (e.g. "°C"), when the question carries one. */
+  unit?: string;
+}
+
+// Prefer `unit` (what CARE actually renders next to the question label) and
+// fall back to `answer_unit`, then to the unit's code if it has no display.
+function questionUnitText(q: FormQuestion): string | undefined {
+  const unit = q.unit ?? q.answer_unit;
+  return unit?.display || unit?.code || undefined;
 }
 
 /**
@@ -70,6 +84,7 @@ function collectFields(questions: FormQuestion[], out: FormField[]) {
         description: q.description,
         type: q.type,
         structuredType: q.structured_type,
+        unit: questionUnitText(q),
       });
       continue;
     }
@@ -88,6 +103,7 @@ function collectFields(questions: FormQuestion[], out: FormField[]) {
       label: q.text,
       description: q.description,
       type: q.type,
+      unit: questionUnitText(q),
     };
 
     if (q.answer_option?.length) {
@@ -118,22 +134,28 @@ export interface MedispeakFieldSpec {
  * matches extracted data back onto questions by fuzzy-matching question text
  * against these keys (`findMatchingLabel`), the same way the legacy
  * LLM-prompt pipeline's JSON keys work. An id-keyed result would never match.
+ *
+ * A field's unit (if any) is appended to its label — e.g. two "Temperature"
+ * questions in °C and °F both become distinct keys ("Temperature (°C)" /
+ * "Temperature (°F)") instead of colliding, mirroring how CARE itself shows
+ * the unit next to the question label on screen.
  */
 export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
   const specs: MedispeakFieldSpec[] = [];
   for (const f of fields) {
+    const label = f.unit ? `${f.label} (${f.unit})` : f.label;
     if (f.structuredType) {
       const description = withHelpText(
         f,
-        `${getStructuredFieldDescription(f.structuredType, f.label)}; example: ${JSON.stringify(getStructuredFieldExample(f.structuredType))}`,
+        `${getStructuredFieldDescription(f.structuredType, label)}; example: ${JSON.stringify(getStructuredFieldExample(f.structuredType))}`,
       );
-      specs.push({ key: f.label, label: f.label, type: "string", description });
+      specs.push({ key: label, label, type: "string", description });
       continue;
     }
     if (f.type === "boolean") {
       specs.push({
-        key: f.label,
-        label: f.label,
+        key: label,
+        label,
         type: "single_select",
         enum: ["true", "false", BOOLEAN_NOT_MENTIONED],
         description: withHelpText(
@@ -143,27 +165,27 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
       });
       specs.push(
         noteSpec(
-          f.label,
-          `Additional commentary about "${f.label}" beyond yes/no yes/not (e.g. ` +
+          label,
+          `Additional commentary about "${label}" beyond yes/no yes/not (e.g. ` +
             "timing, severity, context) if explicitly mentioned.",
         ),
       );
     } else if (f.type === "decimal" || f.type === "integer") {
       specs.push({
-        key: f.label,
-        label: f.label,
+        key: label,
+        label,
         type: "number",
         description: withHelpText(
           f,
           "Numeric value only. If the clinician only gave a descriptive " +
             `term (e.g. "normal", "elevated") with no number, leave this out ` +
-            `and use "${f.label}_note" instead.`,
+            `and use "${label}_note" instead.`,
         ),
       });
       specs.push(
         noteSpec(
-          f.label,
-          `Descriptive/qualitative commentary for "${f.label}" (e.g. "normal", ` +
+          label,
+          `Descriptive/qualitative commentary for "${label}" (e.g. "normal", ` +
             `"very high", "borderline") if the clinician gave any — whether or ` +
             'not they also gave a number (e.g. "120, very high" -> number 120, ' +
             `note "very high"). Only include if explicitly mentioned.`,
@@ -171,16 +193,16 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
       );
     } else if (f.type === "choice" && f.options?.length) {
       specs.push({
-        key: f.label,
-        label: f.label,
+        key: label,
+        label,
         type: "single_select",
         enum: f.options,
         description: withHelpText(f),
       });
       specs.push(
         noteSpec(
-          f.label,
-          `Additional commentary about "${f.label}" beyond the selected ` +
+          label,
+          `Additional commentary about "${label}" beyond the selected ` +
             "option, if explicitly mentioned.",
         ),
       );
@@ -189,19 +211,24 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
       // ask for a code/display_names object and resolve it via the same
       // search-and-select valueset lookup used for medication/diagnosis/etc.
       specs.push({
-        key: f.label,
-        label: f.label,
+        key: label,
+        label,
         type: "string",
         description: withHelpText(
           f,
-          `The clinical term the clinician used for "${f.label}", as JSON: ` +
+          `The clinical term the clinician used for "${label}", as JSON: ` +
             '{"code": "<code if known, else empty string>", "display_names": ' +
             '["<exact term used>", "<a close synonym, if any>"]}. Only ' +
             "include if explicitly mentioned.",
         ),
       });
     } else {
-      specs.push({ key: f.label, label: f.label, type: "string", description: withHelpText(f) });
+      specs.push({
+        key: label,
+        label,
+        type: "string",
+        description: withHelpText(f),
+      });
     }
   }
   return specs;

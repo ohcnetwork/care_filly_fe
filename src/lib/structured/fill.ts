@@ -37,12 +37,26 @@ function isValueDataKey(key: string): boolean {
   return key !== "clinical_notes" && !key.endsWith("_note");
 }
 
+// Mirrors template-builder.ts's questionUnitText: prefer CARE's Question.unit
+// (what's actually shown next to the label on screen) and fall back to
+// answer_unit, then to the unit's code if it has no display text.
+function getQuestionUnit(
+  question: Record<string, unknown>,
+): string | undefined {
+  const unit = (question.unit ?? question.answer_unit) as
+    | { code?: string; display?: string }
+    | undefined;
+  return unit?.display || unit?.code || undefined;
+}
+
 export function findMatchingLabel(
   questionText: string,
   data: Record<string, unknown>,
   scalarOnly = false,
+  unit?: string,
 ): string | null {
   const normalizedQ = normalizeLabel(questionText);
+  const normalizedUnit = unit ? normalizeLabel(unit) : "";
   const candidateKeys = Object.keys(data).filter((label) => {
     if (!isValueDataKey(label)) return false;
     const raw = data[label];
@@ -56,14 +70,25 @@ export function findMatchingLabel(
   );
   if (exact) return exact;
 
-  for (const label of candidateKeys) {
+  const substringMatches = candidateKeys.filter((label) => {
     const normalizedLabel = normalizeLabel(label);
-    if (
+    return (
       normalizedQ.includes(normalizedLabel) ||
       normalizedLabel.includes(normalizedQ)
-    ) {
-      return label;
+    );
+  });
+  if (substringMatches.length) {
+    // Two questions can share the same text but differ by unit (e.g.
+    // Temperature in °C vs °F) — template-builder.ts encodes the unit into
+    // the outbound key, so prefer whichever loose match also carries this
+    // question's unit before falling back to the first (order-dependent) one.
+    if (normalizedUnit) {
+      const unitMatch = substringMatches.find((label) =>
+        normalizeLabel(label).includes(normalizedUnit),
+      );
+      if (unitMatch) return unitMatch;
     }
+    return substringMatches[0];
   }
 
   if (normalizedQ.includes("systolic") || normalizedQ.includes("diastolic")) {
@@ -98,8 +123,9 @@ function extractScalarValue(raw: unknown): string | null {
 export function matchVitalToQuestion(
   questionText: string,
   data: Record<string, unknown>,
+  unit?: string,
 ): string | null {
-  const label = findMatchingLabel(questionText, data, true);
+  const label = findMatchingLabel(questionText, data, true, unit);
   if (!label) return null;
 
   const value = extractScalarValue(data[label]);
@@ -118,8 +144,9 @@ export function matchVitalToQuestion(
 export function matchNoteToQuestion(
   questionText: string,
   data: Record<string, unknown>,
+  unit?: string,
 ): string | null {
-  const label = findMatchingLabel(questionText, data, true);
+  const label = findMatchingLabel(questionText, data, true, unit);
   if (!label) return null;
 
   const wrappedNote =
@@ -401,6 +428,7 @@ function resolveTriggerValues(
     const extracted = matchVitalToQuestion(
       (triggerQuestion.text as string) || "",
       data,
+      getQuestionUnit(triggerQuestion),
     );
     if (
       extracted !== null &&
@@ -590,8 +618,9 @@ export async function collectFieldsToFill(
         continue;
       }
 
-      const rawValue = matchVitalToQuestion(questionText, data);
-      const matchedNote = matchNoteToQuestion(questionText, data);
+      const questionUnit = getQuestionUnit(question);
+      const rawValue = matchVitalToQuestion(questionText, data, questionUnit);
+      const matchedNote = matchNoteToQuestion(questionText, data, questionUnit);
       const questionType = (question.type as string) || "";
 
       // "not_mentioned" is a sentinel meaning "no answer was given" — for
