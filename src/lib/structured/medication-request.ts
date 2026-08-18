@@ -46,6 +46,7 @@ interface MedicationRequestRow extends DosagePhase {
   priority?: string | null;
   authored_on?: string | null;
   dosage_instructions?: unknown;
+  dosage_additional_instruction?: unknown;
   dosage_as_needed_for?: unknown;
   dosage_site?: unknown;
   dosage_route?: unknown;
@@ -299,7 +300,7 @@ export async function deserializeMedicationRequests(
         }
 
         const additionalInstruction = await resolveOptionalCode(
-          row.dosage_instructions,
+          row.dosage_additional_instruction,
           "system-additional-instruction",
         );
         const asNeededFor = await resolveOptionalCode(
