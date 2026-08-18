@@ -138,12 +138,17 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         enum: ["true", "false", BOOLEAN_NOT_MENTIONED],
         description: withHelpText(
           f,
-          `Whether the clinician explicitly stated this, as "true" or "false". ` +
-            `A negation (e.g. "not an emergency", "no fever", "denies chest pain", ` +
-            `"ruled out infection") is an explicit "false" — answer "false", do NOT ` +
-            `route it to "${f.label}_note" or treat it as unmentioned. Use ` +
-            `"${BOOLEAN_NOT_MENTIONED}" only if the clinician never addressed this ` +
-            `topic at all — never guess "false" for something simply not brought up.`,
+          `Use "${BOOLEAN_NOT_MENTIONED}" whenever the clinician never addressed ` +
+            `this question's subject, or when you cannot tell which way their ` +
+            `statement answers it — never guess. When they did address it, judge ` +
+            `the answer against how THIS question is worded, including questions ` +
+            `that are themselves phrased negatively: answer "true" if their ` +
+            `statement answers this question affirmatively, "false" if it answers ` +
+            `it in the negative (e.g. "not an emergency" for "Is this an ` +
+            `emergency?"). A denial that answers this question is a "false" answer ` +
+            `— do not leave it unanswered just because it was phrased as a denial. ` +
+            `You may still record qualifying detail in the companion note field, ` +
+            `but give the yes/no answer here as well.`,
         ),
       });
       specs.push(

@@ -804,7 +804,15 @@ export function applyFieldToState(
             },
           ];
         } else if (field.matchedValue !== null) {
-          const existingValue = extractExistingStringValue(resp);
+          // Only free text accumulates — appending onto a single-valued
+          // answer (boolean/number/choice) produces a concatenation that
+          // toResponseValue cannot parse, so a boolean would silently
+          // coerce to `false` and a number to a non-numeric string.
+          const isAppendable =
+            field.questionType === "text" || field.questionType === "string";
+          const existingValue = isAppendable
+            ? extractExistingStringValue(resp)
+            : "";
           const nextValue = existingValue
             ? `${existingValue}\n${field.matchedValue}`
             : field.matchedValue;
