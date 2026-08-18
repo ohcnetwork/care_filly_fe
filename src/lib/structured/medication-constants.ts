@@ -180,20 +180,40 @@ const FREQUENCY_ALIASES: Record<
   od: "QD",
   qd: "QD",
   "twice a day": "BID",
+  "twice daily": "BID",
   "two times a day": "BID",
+  "two times daily": "BID",
+  "2 times a day": "BID",
+  "2 times daily": "BID",
   bid: "BID",
   "three times a day": "TID",
+  "three times daily": "TID",
+  "thrice a day": "TID",
+  "thrice daily": "TID",
+  "3 times a day": "TID",
+  "3 times daily": "TID",
   tid: "TID",
   "four times a day": "QID",
+  "four times daily": "QID",
+  "4 times a day": "QID",
+  "4 times daily": "QID",
   qid: "QID",
   morning: "AM",
+  "in the morning": "AM",
+  "every morning": "AM",
   night: "PM",
+  "at night": "PM",
+  nightly: "PM",
+  "every night": "PM",
   bedtime: "PM",
+  "at bedtime": "PM",
 };
 
 export interface ResolvedDosageFrequency {
-  // `null` means the frequency was not mentioned — callers must not
-  // fabricate a default (e.g. QD) in that case.
+  // `null` means the frequency could not be established — either it was not
+  // mentioned at all, or the phrase we received maps to no known schedule.
+  // Callers must not fabricate a default (e.g. QD) in that case; when the
+  // phrase was non-empty it is preserved verbatim in `text`.
   timingOption: MedicationTimingOption | null;
   text?: string;
 }
@@ -201,8 +221,6 @@ export interface ResolvedDosageFrequency {
 export function resolveDosageFrequency(
   frequency: unknown,
 ): ResolvedDosageFrequency {
-  const defaultOption = MEDICATION_REQUEST_TIMING_OPTIONS.QD;
-
   if (frequency == null || frequency === "") {
     return { timingOption: null };
   }
@@ -220,7 +238,11 @@ export function resolveDosageFrequency(
         text: normalized,
       };
     }
-    return { timingOption: defaultOption, text: normalized };
+    // MAN-shaped but not a pattern we map (e.g. "1-1-0"). Keep the raw
+    // pattern as free text rather than pinning it to a schedule that
+    // contradicts it — QD used to be returned here, producing a row whose
+    // text said "1-1-0" while its timing said once-a-day.
+    return { timingOption: null, text: normalized };
   }
 
   const aliasKey = FREQUENCY_ALIASES[normalized];
@@ -237,7 +259,13 @@ export function resolveDosageFrequency(
       option.timing.code.code.toLowerCase() === normalized,
   );
 
-  return { timingOption: matched ?? defaultOption };
+  if (matched) return { timingOption: matched };
+
+  // Unrecognised phrasing (e.g. "every 6 hours", "as directed"). Defaulting
+  // to QD here silently downgraded correctly-heard instructions — "every 6
+  // hours" became once-a-day. Leave the schedule unset and surface what was
+  // heard as free text so the clinician can complete it.
+  return { timingOption: null, text: raw };
 }
 
 export function findTimingOption(
@@ -246,16 +274,26 @@ export function findTimingOption(
   return resolveDosageFrequency(frequency).timingOption;
 }
 
+export interface ParsedDosageDuration {
+  value: number;
+  unit: (typeof BOUNDS_DURATION_UNITS)[number];
+  // `false` when no duration could be read and the default below was
+  // substituted. Callers must not present a defaulted duration as if the
+  // clinician had dictated it.
+  stated: boolean;
+}
+
 export function parseDosageDuration(
   duration: { value?: number | string; unit?: string } | null | undefined,
   fallbackText?: string | null,
-): { value: number; unit: (typeof BOUNDS_DURATION_UNITS)[number] } {
+): ParsedDosageDuration {
   if (duration?.value != null) {
     const value = Number(duration.value);
     if (Number.isFinite(value) && value > 0) {
       return {
         value,
         unit: validateEnum(duration.unit, BOUNDS_DURATION_UNITS, "d") ?? "d",
+        stated: true,
       };
     }
   }
@@ -280,11 +318,12 @@ export function parseDosageDuration(
         years: "a",
       };
       const unit = unitMap[unitWord] ?? "d";
-      if (Number.isFinite(value) && value > 0) return { value, unit };
+      if (Number.isFinite(value) && value > 0)
+        return { value, unit, stated: true };
     }
   }
 
-  return { value: 5, unit: "d" };
+  return { value: 5, unit: "d", stated: false };
 }
 
 export function inferDefaultDosageUnit(

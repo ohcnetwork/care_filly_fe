@@ -279,27 +279,38 @@ export async function deserializeMedicationRequests(
             (resolved.medication ? [resolved.medication.display] : []),
         );
 
+        const boundsDuration = {
+          value: String(duration.value),
+          unit: duration.unit,
+        };
+
+        // `timing` carries BOTH the schedule and the prescription's length
+        // (`repeat.bounds_duration`), so it cannot simply be dropped when the
+        // frequency is unknown — that would also discard a duration the
+        // clinician actually dictated. Emit only what we genuinely know:
+        //   frequency known  -> full timing, with bounds
+        //   duration only    -> bounds only, no fabricated schedule
+        //   neither known    -> no timing at all
+        const timing = asNeededFor
+          ? undefined
+          : frequency.timingOption
+            ? {
+                ...frequency.timingOption.timing,
+                repeat: {
+                  ...frequency.timingOption.timing.repeat,
+                  bounds_duration: boundsDuration,
+                },
+              }
+            : duration.stated
+              ? { repeat: { bounds_duration: boundsDuration } }
+              : undefined;
+
         const dosageInstruction = {
           additional_instruction: additionalInstruction
             ? [additionalInstruction]
             : [],
           text: frequency.text,
-          // frequency.timingOption is null when the clinician never
-          // mentioned a dosage frequency — leave timing unset instead of
-          // fabricating a default (e.g. QD/"once a day").
-          timing:
-            !asNeededFor && frequency.timingOption
-              ? {
-                  ...frequency.timingOption.timing,
-                  repeat: {
-                    ...frequency.timingOption.timing.repeat,
-                    bounds_duration: {
-                      value: String(duration.value),
-                      unit: duration.unit,
-                    },
-                  },
-                }
-              : undefined,
+          timing,
           as_needed_boolean: !!asNeededFor,
           as_needed_for: asNeededFor,
           site,
