@@ -4,6 +4,7 @@ import {
   deserializeDiagnosis,
   deserializeMedicationStatements,
   deserializeSymptoms,
+  deserializeTimeOfDeath,
 } from "./deserializers";
 import { deserializeMedicationRequests } from "./medication-request";
 import { deserializeServiceRequests } from "./service-request";
@@ -134,6 +135,7 @@ export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
       note: null,
     },
   ],
+  time_of_death: "2026-08-18T15:45:00.000Z",
 };
 
 export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
@@ -152,6 +154,8 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
     "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated",
   service_request:
     "array of investigations/lab tests/imaging ordered; each needs activity_definition with title or display_names (e.g. Lipid Panel, CBC, Chest X-Ray); put catalog items here; put anything NOT in the facility catalog under the separate 'Other Investigation' field key or in the free-text note",
+  time_of_death:
+    "the exact date/time the clinician pronounced death, as a plain ISO datetime string (e.g. '2026-05-02T02:00:00'); only include if a death pronouncement was explicitly stated (e.g. 'died around 2 AM', 'time of death 14:20', 'died/dead on 24 may 2025'); leave this out entirely otherwise — never infer or guess a time",
 };
 
 export async function deserializeStructuredData(
@@ -199,6 +203,8 @@ export async function deserializeStructuredData(
         supplementalNote: result.supplementalNote,
       };
     }
+    case "time_of_death":
+      return deserializeTimeOfDeath(raw, current as unknown[] | null);
     default:
       return { data: current, errors: [] };
   }

@@ -171,9 +171,6 @@ export async function deserializeServiceRequests(
   }
 
   if (!encounterId) {
-    errors.push(
-      "Could not resolve encounter for service requests. Open the form from an encounter.",
-    );
     return { data: current, errors };
   }
 
@@ -229,9 +226,6 @@ export async function deserializeServiceRequests(
           bodySite,
         );
       } catch (err) {
-        errors.push(
-          `Failed to parse investigation: ${err instanceof Error ? err.message : "unknown error"}`,
-        );
         return undefined;
       }
     }),
