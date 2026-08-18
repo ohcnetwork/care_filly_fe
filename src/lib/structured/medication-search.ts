@@ -32,7 +32,6 @@ export function buildMedicationSearchQueries(names: string[]): string[] {
         queries.add(`${baseName} ${bareNumber[1]} mg`);
         queries.add(`${baseName} ${bareNumber[1]}mg`);
       }
-      queries.add(`${bareNumber[1]} mg`);
     }
 
     const genericBase = name
@@ -68,26 +67,33 @@ export function scoreProductMatch(
   queries: string[],
 ): number {
   const names = productNames(product).map(normalizeForMatch);
-  let best = 0;
+  let bestDoseAware = 0;
+  let bestGeneric = 0;
 
   for (const query of queries) {
     const q = normalizeForMatch(query);
     if (!q) continue;
+    const doseAware = /\d/.test(q);
 
     for (const name of names) {
+      let score = 0;
       if (name === q) {
-        best = Math.max(best, 100);
-        continue;
+        score = 100;
+      } else if (name.startsWith(q) || q.startsWith(name)) {
+        score = 85;
+      } else if (name.includes(q) || q.includes(name)) {
+        score = 70;
       }
-      if (name.startsWith(q) || q.startsWith(name)) {
-        best = Math.max(best, 85);
-        continue;
-      }
-      if (name.includes(q) || q.includes(name)) {
-        best = Math.max(best, 70);
+
+      if (doseAware) {
+        bestDoseAware = Math.max(bestDoseAware, score);
+      } else {
+        bestGeneric = Math.max(bestGeneric, score);
       }
     }
   }
+
+  let best = bestDoseAware > 0 ? bestDoseAware : bestGeneric;
 
   if (names.some((n) => n.includes("containing product"))) {
     best -= 25;
