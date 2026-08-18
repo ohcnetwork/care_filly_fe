@@ -49,6 +49,21 @@ function getQuestionUnit(
   return unit?.display || unit?.code || undefined;
 }
 
+// template-builder.ts's buildFieldSpecs emits a unit-bearing field's key as
+// `${text} (${unit})`, so the trailing parenthesised segment carries the unit.
+// Split it back off: the unit has to be compared as its own token, because
+// normalizeLabel strips punctuation and a substring test over the whole key
+// makes "g" match "Weight (kg)", "m" match "Height (cm)" and "l" match
+// "Urine volume (mL)". Returns an empty unit when the key has no such segment.
+function splitUnitSuffix(label: string): { base: string; unit: string } {
+  const match = label.match(/\s*\(([^()]*)\)\s*$/);
+  if (!match) return { base: label, unit: "" };
+  return {
+    base: label.slice(0, match.index ?? 0),
+    unit: normalizeLabel(match[1]),
+  };
+}
+
 export function findMatchingLabel(
   questionText: string,
   data: Record<string, unknown>,
@@ -57,34 +72,60 @@ export function findMatchingLabel(
 ): string | null {
   const normalizedQ = normalizeLabel(questionText);
   const normalizedUnit = unit ? normalizeLabel(unit) : "";
-  const candidateKeys = Object.keys(data).filter((label) => {
+  const allKeys = Object.keys(data).filter((label) => {
     if (!isValueDataKey(label)) return false;
     const raw = data[label];
     return !(scalarOnly && raw != null && typeof raw === "object");
   });
 
+  // Two questions can share the same text and differ only by unit (e.g.
+  // Temperature in °C vs °F, Weight in kg vs g). Drop every key that declares
+  // a *different* unit than this question's: its number is on the wrong scale,
+  // and writing 37.2 into a °F field — or a kilogram value into a grams field
+  // — is a worse failure than leaving the field blank. Keys with no unit
+  // segment stay eligible, so extractions that don't echo the unit (and every
+  // question with no unit at all) keep matching exactly as before.
+  const candidateKeys = normalizedUnit
+    ? allKeys.filter((label) => {
+        const keyUnit = splitUnitSuffix(label).unit;
+        return keyUnit === "" || keyUnit === normalizedUnit;
+      })
+    : allKeys;
+
   // Prefer an exact match over a loose substring one, so a stray key like
-  // "additional_symptoms" can't win over the real "symptom" key.
+  // "additional_symptoms" can't win over the real "symptom" key. The unit
+  // segment is split off first, otherwise appending the unit to the outbound
+  // key would push every unit-bearing question onto the permissive substring
+  // path below, where "Weight gain" can beat "Weight (g)".
+  const exactWithUnit = normalizedUnit
+    ? candidateKeys.find((label) => {
+        const parsed = splitUnitSuffix(label);
+        return (
+          parsed.unit === normalizedUnit &&
+          normalizeLabel(parsed.base) === normalizedQ
+        );
+      })
+    : undefined;
+  if (exactWithUnit) return exactWithUnit;
+
   const exact = candidateKeys.find(
     (label) => normalizeLabel(label) === normalizedQ,
   );
   if (exact) return exact;
 
   const substringMatches = candidateKeys.filter((label) => {
-    const normalizedLabel = normalizeLabel(label);
+    const normalizedBase = normalizeLabel(splitUnitSuffix(label).base);
     return (
-      normalizedQ.includes(normalizedLabel) ||
-      normalizedLabel.includes(normalizedQ)
+      normalizedQ.includes(normalizedBase) ||
+      normalizedBase.includes(normalizedQ)
     );
   });
   if (substringMatches.length) {
-    // Two questions can share the same text but differ by unit (e.g.
-    // Temperature in °C vs °F) — template-builder.ts encodes the unit into
-    // the outbound key, so prefer whichever loose match also carries this
-    // question's unit before falling back to the first (order-dependent) one.
+    // Wrong-unit keys are already gone; among what's left, one that actually
+    // declares this question's unit beats one that declares none.
     if (normalizedUnit) {
-      const unitMatch = substringMatches.find((label) =>
-        normalizeLabel(label).includes(normalizedUnit),
+      const unitMatch = substringMatches.find(
+        (label) => splitUnitSuffix(label).unit === normalizedUnit,
       );
       if (unitMatch) return unitMatch;
     }
@@ -600,8 +641,15 @@ export async function collectFieldsToFill(
         | string
         | undefined;
 
+      const questionUnit = getQuestionUnit(question);
+
       if (isSupportedStructuredType(structuredType)) {
-        const label = findMatchingLabel(questionText, data);
+        const label = findMatchingLabel(
+          questionText,
+          data,
+          false,
+          questionUnit,
+        );
         if (!label) continue;
 
         const raw = parseStructuredRaw(data[label]);
@@ -618,7 +666,6 @@ export async function collectFieldsToFill(
         continue;
       }
 
-      const questionUnit = getQuestionUnit(question);
       const rawValue = matchVitalToQuestion(questionText, data, questionUnit);
       const matchedNote = matchNoteToQuestion(questionText, data, questionUnit);
       const questionType = (question.type as string) || "";
@@ -641,7 +688,12 @@ export async function collectFieldsToFill(
         // The answer is a {code, display_names} object, not a plain scalar
         // (matchVitalToQuestion would reject it as JSON-looking text) — same
         // shape resolveOptionalCode expects for medication/diagnosis/etc.
-        const label = findMatchingLabel(questionText, data);
+        const label = findMatchingLabel(
+          questionText,
+          data,
+          false,
+          questionUnit,
+        );
         const parsed = label ? parseStructuredRaw(data[label]) : null;
         const info = parsed?.[0]
           ? normalizeSnomedInfo(parsed[0] as Record<string, unknown>)
