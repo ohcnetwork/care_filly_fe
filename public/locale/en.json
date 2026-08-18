@@ -11,7 +11,6 @@
   "failed": "Failed",
   "fields_filled": "{{n}} fields filled",
   "filled_count": "✓ {{n}} filled",
-  "n_filled": "{{n}} filled",
   "filling_form": "Auto-filling the form",
   "filly": "AI Filly",
   "filly_disabled": "AI Filly is disabled",
@@ -24,8 +23,11 @@
   "microphone_permission_required": "Allow microphone access in your browser to choose a device.",
   "minimize": "Minimize",
   "minimize_transcript": "Minimize transcript",
+  "n_filled": "{{n}} filled",
+  "no_matching_fields": "No matching fields found",
   "no_microphones_found": "No microphones were found.",
   "no_permission_filly": "You do not have permission to use Filly on this facility.",
+  "not_filled_see_note": "Not filled — see note",
   "pause": "Pause",
   "paused": "Paused",
   "position_reset": "Position reset",
@@ -42,6 +44,5 @@
   "stop_and_process": "Stop & Process",
   "transcribing_audio": "Transcribing audio",
   "transcript": "Transcript",
-  "view": "View",
-  "no_matching_fields": "No matching fields found"
+  "view": "View"
 }

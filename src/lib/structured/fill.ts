@@ -27,6 +27,13 @@ export interface FieldFill {
   matchedNote: string | null;
   structuredValue?: unknown;
   coding?: Code;
+  /**
+   * True when this fill only writes a note — nothing was added to the
+   * question's value. The results panel must not report it as "filled":
+   * for a prescription that would tell the clinician a medication was
+   * ordered when the table is in fact still empty.
+   */
+  noteOnly?: boolean;
 }
 
 function normalizeLabel(s: string): string {
@@ -703,14 +710,22 @@ export async function collectFieldsToFill(
 
     if (!hasNewItems && !supplementalNote) continue;
 
+    // A prescription that failed to match was NOT ordered — saying "Also
+    // order:" reads like a placed order to whoever reads the encounter next.
+    const notePrefix =
+      candidate.structuredType === "medication_request"
+        ? "Not prescribed automatically, please add manually: "
+        : "Also order: ";
+
     fieldsToFill.push({
       qId: candidate.qId,
       questionType: candidate.questionType,
       label: candidate.questionText,
       structuredType: candidate.structuredType,
       matchedValue: null,
-      matchedNote: supplementalNote ? `Also order: ${supplementalNote}` : null,
+      matchedNote: supplementalNote ? `${notePrefix}${supplementalNote}` : null,
       structuredValue: hasNewItems ? nextArr : undefined,
+      noteOnly: !hasNewItems,
     });
 
     if (candidate.structuredType === "service_request") {
@@ -814,9 +829,16 @@ export function applyFieldToState(
         if (field.matchedNote !== null) {
           const existing =
             typeof resp.note === "string" ? resp.note.trim() : "";
-          updated.note = existing
-            ? `${existing}\n${field.matchedNote}`
-            : field.matchedNote;
+          // Re-recording the same dictation re-runs the fill, so skip a line
+          // the note already carries instead of stacking duplicates.
+          const alreadyPresent = existing
+            .split("\n")
+            .some((line) => line.trim() === field.matchedNote?.trim());
+          if (!alreadyPresent) {
+            updated.note = existing
+              ? `${existing}\n${field.matchedNote}`
+              : field.matchedNote;
+          }
         }
 
         return updated;

@@ -419,13 +419,21 @@ function FillyControllerInner({
         setFilledCount(0);
         setAppliedFields(fieldsToFill);
 
+        // Note-only fills wrote nothing into the question's value, so they must
+        // not inflate the "N filled" counter the clinician reads as a summary.
+        let filledSoFar = 0;
+        const filledCounts = fieldsToFill.map((field) => {
+          if (!field.noteOnly) filledSoFar += 1;
+          return filledSoFar;
+        });
+
         fieldsToFill.forEach((field, index) => {
           const timeoutId = setTimeout(() => {
             setFormState((currentState: unknown) =>
               applyFieldToState(currentState, field),
             );
             highlightField(field.qId);
-            setFilledCount(index + 1);
+            setFilledCount(filledCounts[index]);
           }, index * FIELD_FILL_DELAY_MS);
 
           fillTimeoutsRef.current.push(timeoutId);
@@ -943,15 +951,17 @@ function FillyControllerInner({
                         {field.label}
                       </span>
                       <span className="text-xs font-medium text-gray-900">
-                        {field.structuredValue
-                          ? t("n_filled", {
-                              n: Array.isArray(field.structuredValue)
-                                ? field.structuredValue.length
-                                : 1,
-                            })
-                          : field.coding
-                            ? field.coding.display
-                            : (field.matchedValue ?? t("n_filled", { n: 1 }))}
+                        {field.noteOnly
+                          ? t("not_filled_see_note")
+                          : field.structuredValue
+                            ? t("n_filled", {
+                                n: Array.isArray(field.structuredValue)
+                                  ? field.structuredValue.length
+                                  : 1,
+                              })
+                            : field.coding
+                              ? field.coding.display
+                              : (field.matchedValue ?? t("n_filled", { n: 1 }))}
                         {field.matchedNote && (
                           <span className="ml-1 font-normal text-gray-500">
                             ({field.matchedNote})

@@ -74,6 +74,69 @@ async function resolveOptionalCode(
   return code ?? undefined;
 }
 
+/**
+ * Names the LLM gave for a medicine, mirroring every shape `resolveMedicine`
+ * accepts (`medicine` / `medication` / the row itself, via `normalizeSnomedInfo`
+ * or `normalizeCodeField`) plus a bare string, which `resolveMedicine` cannot
+ * match against but which still names a real drug the clinician dictated.
+ * Kept next to `resolveMedicine` so the two cannot drift: whatever the resolver
+ * failed to match, this reports back to the clinician verbatim.
+ */
+function extractMedicineNames(row: MedicationRequestRow): string[] {
+  const medicineRaw = row.medicine ?? row.medication ?? row;
+  if (typeof medicineRaw === "string")
+    return normalizeDisplayNames(medicineRaw);
+  const info =
+    normalizeSnomedInfo({ snomed_info: medicineRaw }) ??
+    normalizeCodeField(medicineRaw);
+  return normalizeDisplayNames(info?.display_names);
+}
+
+/**
+ * Dose / frequency / duration exactly as the LLM sent them, with no defaulting
+ * or inference — an unmatched medicine is retyped by hand, so a fabricated
+ * "1 Tablet" would be worse than saying nothing.
+ */
+function describeDosing(row: MedicationRequestRow): string {
+  const parts: string[] = [];
+
+  const amount = (value?: number | string, unit?: string): string | null => {
+    const text = value != null ? String(value).trim() : "";
+    if (!text) return null;
+    const unitText = unit ? String(unit).trim() : "";
+    return unitText ? `${text} ${unitText}` : text;
+  };
+
+  const doseAndRate = row.dosage_dose_and_rate;
+  const quantity = amount(
+    doseAndRate?.dose_quantity?.value,
+    doseAndRate?.dose_quantity?.unit,
+  );
+  if (quantity) parts.push(quantity);
+
+  const low = amount(
+    doseAndRate?.dose_range?.low?.value,
+    doseAndRate?.dose_range?.low?.unit,
+  );
+  const high = amount(
+    doseAndRate?.dose_range?.high?.value,
+    doseAndRate?.dose_range?.high?.unit,
+  );
+  if (low || high) parts.push([low, high].filter(Boolean).join(" to "));
+
+  if (typeof row.dosage_frequency === "string" && row.dosage_frequency.trim()) {
+    parts.push(row.dosage_frequency.trim());
+  }
+
+  const duration = amount(
+    row.dosage_duration?.value,
+    row.dosage_duration?.unit,
+  );
+  if (duration) parts.push(`for ${duration}`);
+
+  return parts.join(", ");
+}
+
 async function resolveMedicine(
   row: MedicationRequestRow,
   facilityId: string | null,
@@ -225,14 +288,17 @@ export async function deserializeMedicationRequests(
         const row = item as MedicationRequestRow;
         const resolved = await resolveMedicine(row, facilityId);
         if (!resolved) {
-          const names = normalizeDisplayNames(
-            normalizeCodeField(row.medicine ?? row.medication)?.display_names,
-          );
-          const label = names[0] ?? "unknown medication";
-          unmatched.push(label);
+          const label = extractMedicineNames(row)[0];
           errors.push(
-            `Could not find a prescribed medication matching "${label}". Please enter manually.`,
+            `Could not find a prescribed medication matching "${label ?? "unknown"}". Please enter manually.`,
           );
+          // With no recoverable name there is nothing actionable to tell the
+          // clinician, so stay silent rather than writing a placeholder like
+          // "unknown medication" into the saved questionnaire note.
+          if (label) {
+            const dosing = describeDosing(row);
+            unmatched.push(dosing ? `${label} (${dosing})` : label);
+          }
           return undefined;
         }
 
@@ -349,7 +415,12 @@ export async function deserializeMedicationRequests(
     ...parsed.filter((item): item is NonNullable<typeof item> => !!item),
   ];
 
-  const supplementalNote = unmatched.length ? unmatched.join(", ") : undefined;
+  // Resolved rows are deduped via `seenKeys`; do the same for the unmatched
+  // ones so an LLM that repeats a medicine (or a re-recording of the same
+  // dictation) does not stack the identical line into the clinical note.
+  const supplementalNote = unmatched.length
+    ? Array.from(new Set(unmatched)).join("; ")
+    : undefined;
 
   return { data: merged, errors, supplementalNote };
 }
