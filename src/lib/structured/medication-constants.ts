@@ -192,21 +192,19 @@ const FREQUENCY_ALIASES: Record<
 };
 
 export interface ResolvedDosageFrequency {
-  timingOption: MedicationTimingOption;
+  timingOption: MedicationTimingOption | null;
   text?: string;
 }
 
 export function resolveDosageFrequency(
   frequency: unknown,
 ): ResolvedDosageFrequency {
-  const defaultOption = MEDICATION_REQUEST_TIMING_OPTIONS.QD;
-
   if (frequency == null || frequency === "") {
-    return { timingOption: defaultOption };
+    return { timingOption: null };
   }
 
   const raw = String(frequency).trim();
-  if (!raw) return { timingOption: defaultOption };
+  if (!raw) return { timingOption: null };
 
   const normalized = raw.toLowerCase();
 
@@ -218,7 +216,7 @@ export function resolveDosageFrequency(
         text: normalized,
       };
     }
-    return { timingOption: defaultOption, text: normalized };
+    return { timingOption: null };
   }
 
   const aliasKey = FREQUENCY_ALIASES[normalized];
@@ -235,12 +233,12 @@ export function resolveDosageFrequency(
       option.timing.code.code.toLowerCase() === normalized,
   );
 
-  return { timingOption: matched ?? defaultOption };
+  return { timingOption: matched ?? null };
 }
 
 export function findTimingOption(
   frequency: string | null | undefined,
-): MedicationTimingOption {
+): MedicationTimingOption | null {
   return resolveDosageFrequency(frequency).timingOption;
 }
 
@@ -308,32 +306,29 @@ export function inferDefaultDosageUnit(
   if (/\b(capsule|cap|tablet|tab|chewable)\b/.test(text)) {
     return (
       DOSAGE_UNITS_CODES.find((unit) => unit.code === "{tbl}") ??
-      findDosageUnit("tablets")
+      findDosageUnit("tablets") ??
+      DOSAGE_UNITS_CODES[0]
     );
   }
   if (/\b(solution|suspension|syrup|injection|milliliter|ml)\b/.test(text)) {
-    return findDosageUnit("milliliter");
+    return findDosageUnit("milliliter") ?? DOSAGE_UNITS_CODES[0];
   }
   if (/\b(drop|drops)\b/.test(text)) {
-    return findDosageUnit("drop");
+    return findDosageUnit("drop") ?? DOSAGE_UNITS_CODES[0];
   }
 
   return DOSAGE_UNITS_CODES[0];
 }
 
-export function findDosageUnit(display: string | undefined): Code {
-  if (!display) return DOSAGE_UNITS_CODES[0];
+export function findDosageUnit(display: string | undefined): Code | null {
+  if (!display) return null;
   const normalized = display.trim().toLowerCase();
   return (
     DOSAGE_UNITS_CODES.find(
       (unit) =>
         unit.display.toLowerCase() === normalized ||
         unit.code.toLowerCase() === normalized,
-    ) ?? {
-      code: display,
-      display,
-      system: "http://unitsofmeasure.org",
-    }
+    ) ?? null
   );
 }
 
