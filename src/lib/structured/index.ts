@@ -113,6 +113,44 @@ export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
       },
       note: null,
     },
+    {
+      medicine: {
+        code: "",
+        display_names: [
+          "Mometasone Nasal Spray 50mcg",
+          "Mometasone nasal spray",
+        ],
+      },
+      intent: "order",
+      category: "outpatient",
+      priority: "routine",
+      dosage_frequency: "QD",
+      dosage_duration: { value: 2, unit: "wk" },
+      dosage_dose_and_rate: {
+        type: "ordered",
+        dose_quantity: { value: 2, unit: "spray" },
+      },
+      note: "tapering dose, phase 1 of 2: 2 sprays in each nostril once daily for 2 weeks",
+    },
+    {
+      medicine: {
+        code: "",
+        display_names: [
+          "Mometasone Nasal Spray 50mcg",
+          "Mometasone nasal spray",
+        ],
+      },
+      intent: "order",
+      category: "outpatient",
+      priority: "routine",
+      dosage_frequency: "QD",
+      dosage_duration: { value: 4, unit: "wk" },
+      dosage_dose_and_rate: {
+        type: "ordered",
+        dose_quantity: { value: 1, unit: "spray" },
+      },
+      note: "tapering dose, phase 2 of 2: 1 spray in each nostril once daily for 4 weeks after the initial phase",
+    },
   ],
   service_request: [
     {
@@ -149,7 +187,7 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
   medication_statement:
     "array of medications the patient is currently taking (not new prescriptions)",
   medication_request:
-    "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated",
+    "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated; dose unit must reflect what was actually said (tablet, mg, mL, drop, spray, puff, actuation, etc.) — never default to 'Tablet' for a non-tablet form; if the clinician describes a TAPERING or STEPPED dose for the same medicine (frequency, dose, or duration that changes over time, e.g. '2 sprays daily for 2 weeks, then 1 spray daily for 4 weeks'), output ONE separate array entry PER PHASE using the identical medicine.display_names for every phase, each with that phase's own dosage_frequency/dosage_duration/dosage_dose_and_rate, in chronological order, and note the phase number in the note field — do NOT collapse the phases into a single entry or drop any phase",
   service_request:
     "array of investigations/lab tests/imaging ordered; each needs activity_definition with title or display_names (e.g. Lipid Panel, CBC, Chest X-Ray); put catalog items here; put anything NOT in the facility catalog under the separate 'Other Investigation' field key or in the free-text note",
 };

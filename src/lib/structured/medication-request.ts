@@ -215,8 +215,6 @@ export async function deserializeMedicationRequests(
     return { data: current, errors };
   }
 
-  const seenKeys = new Set(currentKeys);
-
   const parsed = await Promise.all(
     data.map(async (item) => {
       try {
@@ -234,10 +232,6 @@ export async function deserializeMedicationRequests(
 
         const dedupeKey =
           resolved.medication?.code || resolved.requested_product || "";
-        if (dedupeKey) {
-          if (seenKeys.has(dedupeKey)) return undefined;
-          seenKeys.add(dedupeKey);
-        }
 
         const additionalInstruction = await resolveOptionalCode(
           row.dosage_instructions,
@@ -309,27 +303,30 @@ export async function deserializeMedicationRequests(
         };
 
         return {
-          status: "active",
-          intent:
-            validateEnum(row.intent, MEDICATION_REQUEST_INTENT, "order") ??
-            "order",
-          category:
-            validateEnum(row.category, MEDICATION_CATEGORIES, "outpatient") ??
-            "outpatient",
-          priority:
-            validateEnum(row.priority, MEDICATION_PRIORITIES, "routine") ??
-            "routine",
-          do_not_perform: false,
-          ...(resolved.requested_product
-            ? {}
-            : { medication: resolved.medication }),
-          requested_product: resolved.requested_product,
-          requested_product_internal: resolved.requested_product_internal,
-          authored_on: authoredOn,
-          dirty: true,
-          requester: currentUser,
-          note: noNullStrings(row.note as string),
-          dosage_instruction: [dosageInstruction],
+          dedupeKey,
+          entry: {
+            status: "active",
+            intent:
+              validateEnum(row.intent, MEDICATION_REQUEST_INTENT, "order") ??
+              "order",
+            category:
+              validateEnum(row.category, MEDICATION_CATEGORIES, "outpatient") ??
+              "outpatient",
+            priority:
+              validateEnum(row.priority, MEDICATION_PRIORITIES, "routine") ??
+              "routine",
+            do_not_perform: false,
+            ...(resolved.requested_product
+              ? {}
+              : { medication: resolved.medication }),
+            requested_product: resolved.requested_product,
+            requested_product_internal: resolved.requested_product_internal,
+            authored_on: authoredOn,
+            dirty: true,
+            requester: currentUser,
+            note: noNullStrings(row.note as string),
+            dosage_instruction: [dosageInstruction],
+          },
         };
       } catch (err) {
         errors.push(
@@ -340,10 +337,44 @@ export async function deserializeMedicationRequests(
     }),
   );
 
-  const merged = [
-    ...current,
-    ...parsed.filter((item): item is NonNullable<typeof item> => !!item),
-  ];
+  // Merge (rather than drop) additional rows for a medicine already added in
+  // this same batch: a clinician describing a tapering/stepped dose (e.g.
+  // "2 sprays daily for 2 weeks, then 1 spray daily for 4 weeks") produces
+  // multiple array rows for the same medicine, one per phase. FHIR models
+  // this as multiple `dosage_instruction` entries on a single
+  // MedicationRequest, so phases are appended to one entry instead of being
+  // deduped away or turned into duplicate MedicationRequest entries.
+  // A medicine already present from a previous fill pass (`currentKeys`) is
+  // still skipped, preserving the existing cross-call dedup behavior.
+  type ParsedEntry = NonNullable<(typeof parsed)[number]>["entry"];
+  const newEntries: ParsedEntry[] = [];
+  const dedupeKeyToIndex = new Map<string, number>();
+
+  for (const parsedItem of parsed) {
+    if (!parsedItem) continue;
+    const { dedupeKey, entry } = parsedItem;
+
+    if (dedupeKey && currentKeys.has(dedupeKey)) continue;
+
+    const existingIndex = dedupeKey
+      ? dedupeKeyToIndex.get(dedupeKey)
+      : undefined;
+    if (dedupeKey && existingIndex != null) {
+      const existing = newEntries[existingIndex];
+      existing.dosage_instruction.push(...entry.dosage_instruction);
+      if (entry.note) {
+        existing.note = existing.note
+          ? `${existing.note}\n${entry.note}`
+          : entry.note;
+      }
+      continue;
+    }
+
+    if (dedupeKey) dedupeKeyToIndex.set(dedupeKey, newEntries.length);
+    newEntries.push(entry);
+  }
+
+  const merged = [...current, ...newEntries];
 
   return { data: merged, errors };
 }

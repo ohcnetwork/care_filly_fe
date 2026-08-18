@@ -40,6 +40,20 @@ export const DOSAGE_UNITS_CODES: Code[] = [
   },
   { code: "{count}", display: "count", system: "http://unitsofmeasure.org" },
   { code: "Tablet", display: "Tablet", system: "http://unitsofmeasure.org" },
+  { code: "{spray}", display: "spray", system: "http://unitsofmeasure.org" },
+  { code: "{spray}", display: "sprays", system: "http://unitsofmeasure.org" },
+  { code: "{puff}", display: "puff", system: "http://unitsofmeasure.org" },
+  { code: "{puff}", display: "puffs", system: "http://unitsofmeasure.org" },
+  {
+    code: "{actuat}",
+    display: "actuation",
+    system: "http://unitsofmeasure.org",
+  },
+  {
+    code: "{actuat}",
+    display: "actuations",
+    system: "http://unitsofmeasure.org",
+  },
 ];
 
 export interface MedicationTimingOption {
@@ -316,6 +330,24 @@ export function inferDefaultDosageUnit(
   }
   if (/\b(drop|drops)\b/.test(text)) {
     return findDosageUnit("drop");
+  }
+  if (/\b(nasal spray|spray|sprays)\b/.test(text)) {
+    return (
+      DOSAGE_UNITS_CODES.find((unit) => unit.code === "{spray}") ??
+      findDosageUnit("spray")
+    );
+  }
+  if (/\b(puff|puffs|inhaler|inhalers|mdi|metered[- ]dose)\b/.test(text)) {
+    return (
+      DOSAGE_UNITS_CODES.find((unit) => unit.code === "{puff}") ??
+      findDosageUnit("puff")
+    );
+  }
+  if (/\b(actuation|actuations)\b/.test(text)) {
+    return (
+      DOSAGE_UNITS_CODES.find((unit) => unit.code === "{actuat}") ??
+      findDosageUnit("actuation")
+    );
   }
 
   return DOSAGE_UNITS_CODES[0];
