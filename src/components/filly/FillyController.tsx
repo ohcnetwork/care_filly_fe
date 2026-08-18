@@ -431,6 +431,9 @@ function FillyControllerInner({
             if (field.structuredType === "service_request") {
               expandServiceRequestRows(field.qId, field.structuredValue);
             }
+            if (field.structuredType === "medication_request") {
+              revealMedicationAdvancedFields(field.qId, field.structuredValue);
+            }
           }, index * FIELD_FILL_DELAY_MS);
 
           fillTimeoutsRef.current.push(timeoutId);
@@ -1129,6 +1132,40 @@ function expandServiceRequestRows(qId: string, structuredValue: unknown) {
       ).find((btn) => btn.textContent?.includes(title));
       trigger?.click();
     }
+  }, 100);
+}
+
+// expand the medication request advanced fields if any of the dosage instructions have additional instructions,
+// site, route, or method specified
+function revealMedicationAdvancedFields(
+  qId: string,
+  structuredValue: unknown,
+): void {
+  if (!Array.isArray(structuredValue) || !structuredValue.length) return;
+
+  const hasAdvancedData = structuredValue.some((medication) => {
+    const dosageInstruction = (medication as Record<string, unknown> | null)
+      ?.dosage_instruction;
+    if (!Array.isArray(dosageInstruction)) return false;
+    return dosageInstruction.some((di: Record<string, unknown>) => {
+      const additionalInstruction = di?.additional_instruction;
+      return (
+        (Array.isArray(additionalInstruction) &&
+          additionalInstruction.length > 0) ||
+        !!di?.site ||
+        !!di?.route ||
+        !!di?.method
+      );
+    });
+  });
+  if (!hasAdvancedData) return;
+
+  setTimeout(() => {
+    const container = document.getElementById(`question-${qId}`);
+    const toggle = (container ?? document).querySelector<HTMLElement>(
+      '[title="Show Advanced Fields"]',
+    );
+    toggle?.click();
   }, 100);
 }
 
