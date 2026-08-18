@@ -15,6 +15,7 @@ import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import {
   type FormField,
   buildFieldSpecs,
+  extractFormContext,
   extractFormFields,
 } from "@/lib/template-builder";
 import type { FillyResult, FillyStatus } from "@/lib/types/filly";
@@ -191,8 +192,11 @@ export function useFilly({
       const formFields: FormField[] = formStateProp
         ? extractFormFields(formStateProp)
         : [];
+      const context = formStateProp
+        ? extractFormContext(formStateProp)
+        : undefined;
       const language = options?.language || FILLY_LANGUAGES;
-      return { facilityId, formFields, language };
+      return { facilityId, formFields, context, language };
     },
     [formStateProp],
   );
@@ -248,12 +252,13 @@ export function useFilly({
         segmentSeqRef.current = 0;
         setDuration(0);
 
-        const { facilityId, formFields, language } =
+        const { facilityId, formFields, context, language } =
           buildSessionExtras(options);
 
         medispeakHandleRef.current = await createMedispeakSession({
           facilityId,
           fields: buildFieldSpecs(formFields),
+          context,
           language,
         });
 

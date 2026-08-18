@@ -52,6 +52,39 @@ export function extractFormFields(formState: unknown): FormField[] {
   return fields;
 }
 
+/**
+ * Extract form-level context (title + description) from a CARE
+ * questionnaire's formState. Unlike individual field descriptions, this is
+ * overall guidance about what the form as a whole is for, which helps the
+ * model structure ambiguous dictation correctly. A formState can carry more
+ * than one top-level questionnaire (e.g. a batch fill); each one's context
+ * is included.
+ */
+export function extractFormContext(formState: unknown): string | undefined {
+  if (!Array.isArray(formState)) return undefined;
+
+  const parts: string[] = [];
+  for (const group of formState) {
+    const questionnaire = (group as Record<string, unknown>)?.questionnaire as
+      | Record<string, unknown>
+      | undefined;
+    if (!questionnaire) continue;
+
+    const title =
+      typeof questionnaire.title === "string" ? questionnaire.title.trim() : "";
+    const description =
+      typeof questionnaire.description === "string"
+        ? questionnaire.description.trim()
+        : "";
+
+    if (title && description) parts.push(`${title}: ${description}`);
+    else if (title) parts.push(title);
+    else if (description) parts.push(description);
+  }
+
+  return parts.length ? parts.join("\n") : undefined;
+}
+
 function collectFields(questions: FormQuestion[], out: FormField[]) {
   for (const q of questions) {
     // Skip groups — recurse into their children
@@ -201,7 +234,12 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         ),
       });
     } else {
-      specs.push({ key: f.label, label: f.label, type: "string", description: withHelpText(f) });
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "string",
+        description: withHelpText(f),
+      });
     }
   }
   return specs;

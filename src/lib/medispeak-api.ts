@@ -30,6 +30,8 @@ interface CreateParams {
   fields?: MedispeakFieldSpec[];
   language?: string[];
   mode?: string;
+  /** Questionnaire title/description — overall form context for the prompt. */
+  context?: string;
 }
 
 class MedispeakAuthError extends Error {}
@@ -103,6 +105,7 @@ export async function createMedispeakSession(
       fields: params.fields,
       language: params.language,
       mode: params.mode,
+      context: params.context,
     }),
   });
   if (!response.ok) return parseError(response);
