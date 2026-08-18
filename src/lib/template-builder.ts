@@ -152,7 +152,10 @@ export interface MedispeakFieldSpec {
  * against these keys (`findMatchingLabel`), the same way the legacy
  * LLM-prompt pipeline's JSON keys work. An id-keyed result would never match.
  */
-export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
+export function buildFieldSpecs(
+  fields: FormField[],
+  formContext?: string,
+): MedispeakFieldSpec[] {
   const specs: MedispeakFieldSpec[] = [];
   for (const f of fields) {
     if (f.structuredType) {
@@ -242,7 +245,46 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
       });
     }
   }
-  return specs;
+  return formContext ? withFormContext(specs, formContext) : specs;
+}
+
+const MAX_REPEATED_CONTEXT_CHARS = 1000;
+
+/**
+ * Prepend form-level context to every spec's `description`.
+ *
+ * Per-field descriptions are the ONLY channel that reaches the model today:
+ * care_filly's session viewset forwards `fields` verbatim as
+ * `outputs: [{type: "form", fields}]`, but reads only `facility_id`, `fields`,
+ * `language` and `mode` off the request body — any other top-level key (such
+ * as `context`) is silently dropped, and `medispeak_client.create_session`
+ * has no parameter for it either.
+ *
+ * Repeating the text per field rather than emitting one synthetic spec to
+ * carry it is deliberate: a synthetic spec would add a key to the model's
+ * output, and `findMatchingLabel` in `structured/fill.ts` matches result keys
+ * onto questions by two-way substring, so a context-bearing key could win a
+ * fuzzy match and write prose into a real clinical field. Extra description
+ * text cannot land on a field; a stray key can.
+ */
+function withFormContext(
+  specs: MedispeakFieldSpec[],
+  formContext: string,
+): MedispeakFieldSpec[] {
+  // Repeated on every spec, so a long description would bloat the request
+  // body many times over. Past this size drop it rather than truncate: a
+  // half-sentence clinical instruction can invert its own meaning, and no
+  // context is safer than misleading context.
+  if (formContext.length > MAX_REPEATED_CONTEXT_CHARS) return specs;
+
+  const prefix =
+    "Context for the questionnaire as a whole (background, not an " +
+    `instruction about this specific field): ${formContext}`;
+
+  return specs.map((spec) => ({
+    ...spec,
+    description: spec.description ? `${prefix}\n${spec.description}` : prefix,
+  }));
 }
 
 // The CARE question's own help text/description

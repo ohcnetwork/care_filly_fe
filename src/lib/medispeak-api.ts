@@ -30,7 +30,14 @@ interface CreateParams {
   fields?: MedispeakFieldSpec[];
   language?: string[];
   mode?: string;
-  /** Questionnaire title/description — overall form context for the prompt. */
+  /**
+   * Questionnaire title/description — overall form context for the prompt.
+   *
+   * Sent for forward compatibility only: the care_filly viewset currently
+   * reads just `facility_id`/`fields`/`language`/`mode` and drops this key.
+   * What actually reaches the model today is the same text folded into each
+   * field spec's `description` by `buildFieldSpecs` — keep passing it there.
+   */
   context?: string;
 }
 

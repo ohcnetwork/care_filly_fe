@@ -257,7 +257,7 @@ export function useFilly({
 
         medispeakHandleRef.current = await createMedispeakSession({
           facilityId,
-          fields: buildFieldSpecs(formFields),
+          fields: buildFieldSpecs(formFields, context),
           context,
           language,
         });
