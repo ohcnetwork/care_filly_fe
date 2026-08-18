@@ -428,6 +428,9 @@ function FillyControllerInner({
             );
             highlightField(field.qId);
             setFilledCount(index + 1);
+            if (field.structuredType === "service_request") {
+              expandServiceRequestRows(field.qId, field.structuredValue);
+            }
           }, index * FIELD_FILL_DELAY_MS);
 
           fillTimeoutsRef.current.push(timeoutId);
@@ -1097,6 +1100,36 @@ function highlightField(qId: string): void {
   el.scrollIntoView({ behavior: "smooth", block: "center" });
 
   setTimeout(() => el.classList.remove(HIGHLIGHT_CLASS), 3000);
+}
+
+function expandServiceRequestRows(qId: string, structuredValue: unknown) {
+  if (!Array.isArray(structuredValue) || !structuredValue.length) return;
+
+  setTimeout(() => {
+    const container = document.getElementById(`question-${qId}`);
+    if (!container) return;
+
+    for (const item of structuredValue) {
+      const sr = (item as Record<string, unknown> | null)?.service_request as
+        | Record<string, unknown>
+        | undefined;
+      const title = typeof sr?.title === "string" ? sr.title : undefined;
+      const hasExtraDetails = !!(
+        sr?.body_site ||
+        (typeof sr?.patient_instruction === "string" &&
+          sr.patient_instruction.trim()) ||
+        (typeof sr?.note === "string" && sr.note.trim())
+      );
+      if (!title || !hasExtraDetails) continue;
+
+      const trigger = Array.from(
+        container.querySelectorAll<HTMLButtonElement>(
+          '[data-slot="collapsible-trigger"][data-state="closed"]',
+        ),
+      ).find((btn) => btn.textContent?.includes(title));
+      trigger?.click();
+    }
+  }, 100);
 }
 
 export default FillyController;

@@ -154,6 +154,8 @@ export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
       },
       intent: "order",
       priority: "routine",
+      body_site: null,
+      patient_instruction: null,
       note: null,
     },
     {
@@ -162,7 +164,10 @@ export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
         display_names: ["CBC", "Complete Blood Count"],
       },
       intent: "order",
-      priority: "routine",
+      priority: "asap",
+      body_site: null,
+      patient_instruction:
+        "Fast (no food or drink) for 12 hours before the test",
       note: null,
     },
   ],
@@ -184,7 +189,7 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
   medication_request:
     "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated; for a taper/step regimen where the dose or frequency explicitly changes partway through (e.g. '1 tablet daily for 2 weeks, then 2 tablets daily for 4 weeks'), use dosage_phases (an array of {dosage_frequency, dosage_duration, dosage_dose_and_rate}) instead of the flat fields — one entry per phase, in the order stated; omit dosage_phases entirely for an ordinary single-phase prescription",
   service_request:
-    "array of investigations/lab tests/imaging ordered; each needs activity_definition with title or display_names (e.g. Lipid Panel, CBC, Chest X-Ray); put catalog items here; put anything NOT in the facility catalog under the separate 'Other Investigation' field key or in the free-text note",
+    "array of investigations/lab tests/imaging ordered; each needs activity_definition with title or display_names (e.g. Lipid Panel, CBC, Chest X-Ray); put catalog items here; put anything NOT in the facility catalog under the separate 'Other Investigation' field key or in the free-text note; priority is exactly one of routine | urgent | asap | stat — 'as soon as possible'/'ASAP' maps to asap (NOT urgent), 'urgent' is for urgent-but-not-immediate, 'stat' is for immediate/emergency, default routine when unstated; patient_instruction is any instruction spoken TO THE PATIENT about that specific test (fasting/food restriction, hydration, stopping a medication beforehand, etc.) — capture it whenever mentioned, even briefly, it is a very common field, do not leave it null when the clinician gives such an instruction; body_site is only for a test/imaging targeting a specific anatomical location (e.g. chest X-ray, knee MRI), as snomed_info { code, display_names }, omit if not mentioned",
   time_of_death:
     "the exact date/time the clinician pronounced death, as a plain ISO datetime string (e.g. '2026-05-02T02:00:00'); only include if a death pronouncement was explicitly stated (e.g. 'died around 2 AM', 'time of death 14:20', 'died/dead on 24 may 2025'); leave this out entirely otherwise — never infer or guess a time",
 };
