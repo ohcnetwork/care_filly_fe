@@ -1,6 +1,8 @@
 name: Add Preview URL to PR
 
-on: deployment_status
+on:
+  issue_comment:
+    types: [created, edited]
 
 permissions:
   contents: read
@@ -8,43 +10,42 @@ permissions:
 
 jobs:
   update-pr-body:
-    if: github.event.deployment_status.state == 'success' && github.event.deployment.environment != 'production'
+    if: >
+      github.event.issue.pull_request != null &&
+      github.event.comment.user.login == 'cloudflare-workers-and-pages[bot]' &&
+      contains(github.event.comment.body, 'Branch Preview URL')
     runs-on: ubuntu-latest
     steps:
-      - name: Update PR body with preview URL
+      - name: Update PR body with branch preview URL
         uses: actions/github-script@v7
         with:
           script: |
-            const previewUrl =
-              context.payload.deployment_status.environment_url ||
-              context.payload.deployment_status.target_url;
-            if (!previewUrl) return;
+            // Cloudflare's comment embeds the link as: Branch Preview URL:</strong></td><td>\n<a href='...'>
+            const match = context.payload.comment.body.match(
+              /Branch Preview URL:.*?href=['"]([^'"]+)['"]/s,
+            );
+            if (!match) return;
+            const previewUrl = match[1];
 
-            const ref = context.payload.deployment.ref;
-            const { data: prs } = await github.rest.pulls.list({
+            const prNumber = context.payload.issue.number;
+            const marker = "<!-- cloudflare-preview-url -->";
+            const section = `${marker}\n🚀 **Branch Preview:** ${previewUrl}`;
+
+            const { data: pr } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              state: "open",
-              head: `${context.repo.owner}:${ref}`,
+              pull_number: prNumber,
             });
 
-            const marker = "<!-- cloudflare-preview-url -->";
-            const section = `${marker}\n🚀 **Preview:** ${previewUrl}`;
+            let body = pr.body || "";
+            body = body.includes(marker)
+              ? body.replace(new RegExp(`${marker}.*`, "s"), section)
+              : `${body}\n\n${section}`;
 
-            for (const pr of prs) {
-              let body = pr.body || "";
-              if (body.includes(marker)) {
-                body = body.replace(
-                  new RegExp(`${marker}.*`, "s"),
-                  section,
-                );
-              } else {
-                body = `${body}\n\n${section}`;
-              }
-              await github.rest.pulls.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: pr.number,
-                body,
-              });
-            }
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              body,
+            });
+
