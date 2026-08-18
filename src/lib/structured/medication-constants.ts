@@ -139,6 +139,22 @@ export const MEDICATION_REQUEST_TIMING_OPTIONS: Record<
       },
     },
   },
+  NOON: {
+    display: "NOON (0-1-0)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "1",
+        period_unit: "d",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "NOON",
+        display: "At noon",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
   PM: {
     display: "PM (0-0-1)",
     timing: {
@@ -155,6 +171,294 @@ export const MEDICATION_REQUEST_TIMING_OPTIONS: Record<
       },
     },
   },
+  BID_MORNING_NOON: {
+    display: "BID (1-1-0)",
+    timing: {
+      repeat: {
+        frequency: 2,
+        period: "1",
+        period_unit: "d",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "BID",
+        display: "Morning and noon",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  BID_NOON_NIGHT: {
+    display: "BID (0-1-1)",
+    timing: {
+      repeat: {
+        frequency: 2,
+        period: "1",
+        period_unit: "d",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "BID",
+        display: "Noon and night",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  TID_MORNING_NOON_NIGHT: {
+    display: "TID (1-1-1)",
+    timing: {
+      repeat: {
+        frequency: 3,
+        period: "1",
+        period_unit: "d",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "TID",
+        display: "Morning, noon and night",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  QOD: {
+    display: "QOD (Alternate days)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "2",
+        period_unit: "d",
+        bounds_duration: { value: "2", unit: "d" },
+      },
+      code: {
+        code: "QOD",
+        display: "Alternate days",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  Q1H: {
+    display: "Q1H (Every 1 hour)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "1",
+        period_unit: "h",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "Q1H",
+        display: "Every 1 hour",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  Q2H: {
+    display: "Q2H (Every 2 hours)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "2",
+        period_unit: "h",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "Q2H",
+        display: "Every 2 hours",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  Q3H: {
+    display: "Q3H (Every 3 hours)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "3",
+        period_unit: "h",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "Q3H",
+        display: "Every 3 hours",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  Q4H: {
+    display: "Q4H (Every 4 hours)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "4",
+        period_unit: "h",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "Q4H",
+        display: "Every 4 hours",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  Q6H: {
+    display: "Q6H (Every 6 hours)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "6",
+        period_unit: "h",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "Q6H",
+        display: "Every 6 hours",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  Q8H: {
+    display: "Q8H (Every 8 hours)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "8",
+        period_unit: "h",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "Q8H",
+        display: "Every 8 hours",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  Q12H: {
+    display: "Q12H (Every 12 hours)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "12",
+        period_unit: "h",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "Q12H",
+        display: "Every 12 hours",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  BED: {
+    display: "BED (0-0-1)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "1",
+        period_unit: "d",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "BED",
+        display: "Bedtime",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  WK: {
+    display: "WK (Weekly)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "1",
+        period_unit: "wk",
+        bounds_duration: { value: "1", unit: "wk" },
+      },
+      code: {
+        code: "WK",
+        display: "Weekly",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  MO: {
+    display: "MO (Monthly)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "1",
+        period_unit: "mo",
+        bounds_duration: { value: "1", unit: "mo" },
+      },
+      code: {
+        code: "MO",
+        display: "Monthly",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  HS: {
+    display: "HS (At bedtime)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "1",
+        period_unit: "d",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "HS",
+        display: "At bedtime",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  AC: {
+    display: "AC (Before meals)",
+    timing: {
+      repeat: {
+        frequency: 3,
+        period: "1",
+        period_unit: "d",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "AC",
+        display: "Before meals",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  PC: {
+    display: "PC (After meals)",
+    timing: {
+      repeat: {
+        frequency: 3,
+        period: "1",
+        period_unit: "d",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "PC",
+        display: "After meals",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
+  STAT: {
+    display: "STAT (Immediately)",
+    timing: {
+      repeat: {
+        frequency: 1,
+        period: "1",
+        period_unit: "d",
+        bounds_duration: { value: "1", unit: "d" },
+      },
+      code: {
+        code: "STAT",
+        display: "Immediately",
+        system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation",
+      },
+    },
+  },
 };
 
 const MAN_FREQUENCY_MAP: Record<
@@ -166,6 +470,9 @@ const MAN_FREQUENCY_MAP: Record<
   "1-0-0": "AM",
   "0-0-1": "PM",
   "1-1-1-1": "QID",
+  "1-1-0": "BID_MORNING_NOON",
+  "0-1-1": "BID_NOON_NIGHT",
+  "0-1-0": "NOON",
 };
 
 const MAN_PATTERN = /^[\d]+(?:\/[\d]+)?(-[\d]+(?:\/[\d]+)?){1,3}$/;
@@ -180,15 +487,84 @@ const FREQUENCY_ALIASES: Record<
   od: "QD",
   qd: "QD",
   "twice a day": "BID",
+  "twice daily": "BID",
   "two times a day": "BID",
+  "two times daily": "BID",
+  "2 times a day": "BID",
+  "2 times daily": "BID",
   bid: "BID",
   "three times a day": "TID",
+  "three times daily": "TID",
+  "thrice a day": "TID",
+  "thrice daily": "TID",
+  "3 times a day": "TID",
+  "3 times daily": "TID",
   tid: "TID",
   "four times a day": "QID",
+  "four times daily": "QID",
+  "4 times a day": "QID",
+  "4 times daily": "QID",
   qid: "QID",
   morning: "AM",
+  "in the morning": "AM",
+  "every morning": "AM",
+  noon: "NOON",
+  "at noon": "NOON",
+  midday: "NOON",
   night: "PM",
-  bedtime: "PM",
+  "at night": "PM",
+  nightly: "PM",
+  "every night": "PM",
+  "every evening": "PM",
+  evening: "PM",
+  "in the evening": "PM",
+  bedtime: "HS",
+  "at bedtime": "HS",
+  hs: "HS",
+  hd: "HS",
+  "alternate days": "QOD",
+  "alternate day": "QOD",
+  "every other day": "QOD",
+  qod: "QOD",
+  hourly: "Q1H",
+  "every hour": "Q1H",
+  "every 1 hour": "Q1H",
+  q1h: "Q1H",
+  "every 2 hours": "Q2H",
+  "every two hours": "Q2H",
+  q2h: "Q2H",
+  "every 3 hours": "Q3H",
+  "every three hours": "Q3H",
+  q3h: "Q3H",
+  "every 4 hours": "Q4H",
+  "every four hours": "Q4H",
+  q4h: "Q4H",
+  "every 6 hours": "Q6H",
+  "every six hours": "Q6H",
+  q6h: "Q6H",
+  "every 8 hours": "Q8H",
+  "every eight hours": "Q8H",
+  q8h: "Q8H",
+  "every 12 hours": "Q12H",
+  "every twelve hours": "Q12H",
+  q12h: "Q12H",
+  weekly: "WK",
+  "once a week": "WK",
+  "every week": "WK",
+  wk: "WK",
+  monthly: "MO",
+  "once a month": "MO",
+  "every month": "MO",
+  mo: "MO",
+  "before meals": "AC",
+  "before food": "AC",
+  ac: "AC",
+  "after meals": "PC",
+  "after food": "PC",
+  pc: "PC",
+  stat: "STAT",
+  immediately: "STAT",
+  now: "STAT",
 };
 
 export interface ResolvedDosageFrequency {

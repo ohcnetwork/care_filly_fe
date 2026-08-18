@@ -114,6 +114,37 @@ export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
       },
       note: null,
     },
+    {
+      // Taper/step regimen example: "1 tablet daily for 2 weeks, then 2
+      // tablets daily for 4 weeks" — use dosage_phases instead of the flat
+      // dosage_frequency/dosage_duration/dosage_dose_and_rate fields.
+      medicine: {
+        code: "",
+        display_names: ["Dolo 650", "Paracetamol 650 mg oral tablet"],
+      },
+      intent: "order",
+      category: "outpatient",
+      priority: "routine",
+      dosage_phases: [
+        {
+          dosage_frequency: "QD",
+          dosage_duration: { value: 2, unit: "wk" },
+          dosage_dose_and_rate: {
+            type: "ordered",
+            dose_quantity: { value: 1, unit: "Tablet" },
+          },
+        },
+        {
+          dosage_frequency: "QD",
+          dosage_duration: { value: 4, unit: "wk" },
+          dosage_dose_and_rate: {
+            type: "ordered",
+            dose_quantity: { value: 2, unit: "Tablet" },
+          },
+        },
+      ],
+      note: null,
+    },
   ],
   service_request: [
     {
@@ -151,7 +182,7 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
   medication_statement:
     "array of medications the patient is currently taking (not new prescriptions)",
   medication_request:
-    "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated",
+    "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated; for a taper/step regimen where the dose or frequency explicitly changes partway through (e.g. '1 tablet daily for 2 weeks, then 2 tablets daily for 4 weeks'), use dosage_phases (an array of {dosage_frequency, dosage_duration, dosage_dose_and_rate}) instead of the flat fields — one entry per phase, in the order stated; omit dosage_phases entirely for an ordinary single-phase prescription",
   service_request:
     "array of investigations/lab tests/imaging ordered; each needs activity_definition with title or display_names (e.g. Lipid Panel, CBC, Chest X-Ray); put catalog items here; put anything NOT in the facility catalog under the separate 'Other Investigation' field key or in the free-text note",
   time_of_death:

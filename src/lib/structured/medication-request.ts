@@ -25,20 +25,9 @@ interface DeserializeResult<T> {
   errors: string[];
 }
 
-interface MedicationRequestRow {
-  medicine?: unknown;
-  medication?: unknown;
-  intent?: string | null;
-  category?: string | null;
-  priority?: string | null;
-  authored_on?: string | null;
-  dosage_instructions?: unknown;
+interface DosagePhase {
   dosage_duration?: { value?: number; unit?: string } | null;
   dosage_frequency?: string | null;
-  dosage_as_needed_for?: unknown;
-  dosage_site?: unknown;
-  dosage_route?: unknown;
-  dosage_method?: unknown;
   dosage_dose_and_rate?: {
     type?: "ordered" | "calculated";
     dose_quantity?: { value?: number | string; unit?: string };
@@ -47,6 +36,21 @@ interface MedicationRequestRow {
       high?: { value?: number | string; unit?: string };
     };
   } | null;
+}
+
+interface MedicationRequestRow extends DosagePhase {
+  medicine?: unknown;
+  medication?: unknown;
+  intent?: string | null;
+  category?: string | null;
+  priority?: string | null;
+  authored_on?: string | null;
+  dosage_instructions?: unknown;
+  dosage_as_needed_for?: unknown;
+  dosage_site?: unknown;
+  dosage_route?: unknown;
+  dosage_method?: unknown;
+  dosage_phases?: DosagePhase[] | null;
   note?: string | null;
 }
 
@@ -135,6 +139,7 @@ function parseDoseValue(
 
 function buildDoseAndRate(
   row: MedicationRequestRow,
+  phase: DosagePhase,
   options: {
     defaultUnit?: Code;
     displayNames: string[];
@@ -144,7 +149,7 @@ function buildDoseAndRate(
   const unit =
     options.defaultUnit ??
     inferDefaultDosageUnit(options.displayNames, options.product);
-  const raw = row.dosage_dose_and_rate;
+  const raw = phase.dosage_dose_and_rate;
 
   if (!raw) {
     return {
@@ -183,6 +188,60 @@ function buildDoseAndRate(
       value: parseDoseValue(row, raw),
       unit: findDosageUnit(quantity.unit) ?? unit,
     },
+  };
+}
+
+function buildDosageInstruction(
+  row: MedicationRequestRow,
+  phase: DosagePhase,
+  shared: {
+    additionalInstruction?: Code;
+    asNeededFor?: Code;
+    site?: Code;
+    route?: Code;
+    method?: Code;
+    defaultUnit?: Code;
+    displayNames: string[];
+    product?: ProductKnowledgeBase;
+  },
+) {
+  const frequency = resolveDosageFrequency(phase.dosage_frequency);
+  const instructionText =
+    typeof row.dosage_instructions === "string"
+      ? row.dosage_instructions
+      : null;
+  const duration = parseDosageDuration(
+    phase.dosage_duration,
+    instructionText ?? row.note,
+  );
+
+  return {
+    additional_instruction: shared.additionalInstruction
+      ? [shared.additionalInstruction]
+      : [],
+    text: frequency.text,
+    timing: !shared.asNeededFor
+      ? {
+          ...frequency.timingOption?.timing,
+          repeat: {
+            ...frequency.timingOption?.timing.repeat,
+            bounds_duration: {
+              value: String(duration.value),
+              unit: duration.unit,
+            },
+          },
+        }
+      : undefined,
+    as_needed_boolean: !!shared.asNeededFor,
+    as_needed_for: shared.asNeededFor,
+    site: shared.site,
+    route: shared.route,
+    method: shared.method,
+    dose_and_rate: buildDoseAndRate(row, phase, {
+      defaultUnit: shared.defaultUnit,
+      displayNames: shared.displayNames,
+      product: shared.product,
+    }),
   };
 }
 
@@ -264,49 +323,25 @@ export async function deserializeMedicationRequests(
           ? shiftUTCToLocalClockTime(row.authored_on as string)
           : new Date().toISOString();
 
-        const frequency = resolveDosageFrequency(row.dosage_frequency);
-        const instructionText =
-          typeof row.dosage_instructions === "string"
-            ? row.dosage_instructions
-            : null;
-        const duration = parseDosageDuration(
-          row.dosage_duration,
-          instructionText ?? row.note,
-        );
-
         const names = normalizeDisplayNames(
           normalizeCodeField(row.medicine ?? row.medication)?.display_names ??
             (resolved.medication ? [resolved.medication.display] : []),
         );
 
-        const dosageInstruction = {
-          additional_instruction: additionalInstruction
-            ? [additionalInstruction]
-            : [],
-          text: frequency.text,
-          timing: !asNeededFor
-            ? {
-                ...frequency.timingOption?.timing,
-                repeat: {
-                  ...frequency.timingOption?.timing.repeat,
-                  bounds_duration: {
-                    value: String(duration.value),
-                    unit: duration.unit,
-                  },
-                },
-              }
-            : undefined,
-          as_needed_boolean: !!asNeededFor,
-          as_needed_for: asNeededFor,
+        const phases = row.dosage_phases?.length ? row.dosage_phases : [row];
+        const shared = {
+          additionalInstruction,
+          asNeededFor,
           site,
           route,
           method,
-          dose_and_rate: buildDoseAndRate(row, {
-            defaultUnit: resolved.defaultUnit,
-            displayNames: names,
-            product: resolved.requested_product_internal,
-          }),
+          defaultUnit: resolved.defaultUnit,
+          displayNames: names,
+          product: resolved.requested_product_internal,
         };
+        const dosageInstructions = phases.map((phase) =>
+          buildDosageInstruction(row, phase, shared),
+        );
 
         return {
           status: "active",
@@ -329,7 +364,7 @@ export async function deserializeMedicationRequests(
           dirty: true,
           requester: currentUser,
           note: noNullStrings(row.note as string),
-          dosage_instruction: [dosageInstruction],
+          dosage_instruction: dosageInstructions,
         };
       } catch (err) {
         console.error("Error deserializing medication request row:", err);
