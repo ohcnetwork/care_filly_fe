@@ -200,32 +200,36 @@ export function resolveOnsetDatetime(
  * Resolves an allergy/intolerance's last occurrence date, understanding
  * relative phrases (e.g. "2 weeks ago") the same way resolveOnsetDatetime
  * does. Unlike onset dates, an occurrence date is optional — when nothing
- * in the row indicates a date, this returns null instead of defaulting to
- * today, since "no occurrence mentioned" is a valid, common case for allergies.
+ * indicates a date, this returns null instead of defaulting to today, since
+ * "no occurrence mentioned" is a valid, common case for allergies.
+ *
+ * Only `last_occurrence` is read. `row.note` is deliberately NOT scanned:
+ * notes routinely carry the allergy's *duration* ("since 5 years", "for the
+ * past two weeks" — the exact wording our own few-shot examples teach), which
+ * is a clinically different fact from the date of the last reaction. Deriving
+ * an occurrence date from it would fabricate a plausible-but-wrong value on a
+ * clinical field, which is worse than leaving it empty.
  */
 export function resolveLastOccurrence(
   row: Record<string, unknown>,
   referenceDate: Date = new Date(),
 ): string | null {
-  const candidates: string[] = [];
+  const candidate = row.last_occurrence;
+  if (typeof candidate !== "string") return null;
 
-  if (typeof row.last_occurrence === "string") {
-    candidates.push(row.last_occurrence);
-  }
+  const relative = parseRelativeOnset(candidate, referenceDate);
+  if (relative) return relative;
 
-  if (typeof row.note === "string") {
-    candidates.push(row.note);
-  }
+  // Accept only explicitly date-shaped values. Handing arbitrary prose to
+  // `new Date` invents day/month precision from stray numeric tokens
+  // (e.g. "reaction in 2018" -> 2018-01-01). Take the calendar date verbatim
+  // from a full timestamp too, so a UTC time-of-day cannot shift the recorded
+  // date by a day depending on the browser's timezone.
+  const match = candidate.trim().match(/^(\d{4}-\d{2}-\d{2})(?:[T\s]|$)/);
+  if (!match) return null;
 
-  for (const candidate of candidates) {
-    const relative = parseRelativeOnset(candidate, referenceDate);
-    if (relative) return relative;
-  }
-
-  for (const candidate of candidates) {
-    const dateOnly = validateDate(candidate);
-    if (dateOnly && isPlausibleOnset(dateOnly, referenceDate)) return dateOnly;
-  }
+  const dateOnly = match[1];
+  if (isPlausibleOnset(dateOnly, referenceDate)) return dateOnly;
 
   return null;
 }
