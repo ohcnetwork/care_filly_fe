@@ -196,6 +196,40 @@ export function resolveOnsetDatetime(
   return formatDateQueryString(referenceDate);
 }
 
+/**
+ * Resolves an allergy/intolerance's last occurrence date, understanding
+ * relative phrases (e.g. "2 weeks ago") the same way resolveOnsetDatetime
+ * does. Unlike onset dates, an occurrence date is optional — when nothing
+ * in the row indicates a date, this returns null instead of defaulting to
+ * today, since "no occurrence mentioned" is a valid, common case for allergies.
+ */
+export function resolveLastOccurrence(
+  row: Record<string, unknown>,
+  referenceDate: Date = new Date(),
+): string | null {
+  const candidates: string[] = [];
+
+  if (typeof row.last_occurrence === "string") {
+    candidates.push(row.last_occurrence);
+  }
+
+  if (typeof row.note === "string") {
+    candidates.push(row.note);
+  }
+
+  for (const candidate of candidates) {
+    const relative = parseRelativeOnset(candidate, referenceDate);
+    if (relative) return relative;
+  }
+
+  for (const candidate of candidates) {
+    const dateOnly = validateDate(candidate);
+    if (dateOnly && isPlausibleOnset(dateOnly, referenceDate)) return dateOnly;
+  }
+
+  return null;
+}
+
 export function validateTime(input: string | null | undefined): string | null {
   if (!input) return null;
   const date = new Date(input);

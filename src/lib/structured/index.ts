@@ -145,7 +145,7 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
   diagnosis:
     "array of diagnoses; snomed_info required; onset_datetime as date only YYYY-MM-DD (compute from relative phrases like '3 days ago'; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
   allergy_intolerance:
-    "array of allergies/intolerances; snomed_info from substance hierarchy",
+    "array of allergies/intolerances; snomed_info from substance hierarchy; if the patient mentions when they last had a reaction or exposure (e.g. '2 weeks ago', 'last month', 'in January'), compute last_occurrence as date only YYYY-MM-DD relative to today; if no occurrence timing is mentioned, leave last_occurrence as null — do NOT guess or fabricate a date",
   medication_statement:
     "array of medications the patient is currently taking (not new prescriptions)",
   medication_request:

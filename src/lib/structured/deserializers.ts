@@ -1,6 +1,7 @@
 import {
   type OnsetResolveOptions,
   noNullStrings,
+  resolveLastOccurrence,
   resolveOnsetDatetime,
   shiftUTCToLocalClockTime,
   validateTime,
@@ -248,7 +249,7 @@ export async function deserializeAllergies(
           return undefined;
         }
 
-        const lastOccurrence = validateTime(row.last_occurrence as string);
+        const lastOccurrence = resolveLastOccurrence(row);
         return {
           code,
           clinical_status: (row.clinical_status as string) || "active",
