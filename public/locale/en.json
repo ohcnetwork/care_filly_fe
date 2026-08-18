@@ -43,5 +43,6 @@
   "transcribing_audio": "Transcribing audio",
   "transcript": "Transcript",
   "view": "View",
-  "no_matching_fields": "No matching fields found"
+  "no_matching_fields": "No matching fields found",
+  "filly_is_resolving_fields": "filly is resolving fields.."
 }

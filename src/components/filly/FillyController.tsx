@@ -357,6 +357,7 @@ function FillyControllerInner({
   // extracted data, since a hallucinated/unresolved/disabled value never
   // reaches here even though Medispeak's raw output had something for it.
   const [appliedFields, setAppliedFields] = useState<FieldFill[]>([]);
+  const [isResolvingFields, setIsResolvingFields] = useState(false);
 
   // The user's own filly opt-in from the profile page.
   const preference = useFillyPreference();
@@ -398,6 +399,7 @@ function FillyControllerInner({
       }
       if (appliedRef.current) return;
       appliedRef.current = true;
+      setIsResolvingFields(true);
 
       try {
         const fieldsToFill = await collectFieldsToFill(
@@ -433,6 +435,8 @@ function FillyControllerInner({
       } catch (err) {
         appliedRef.current = false;
         console.error("[Filly] Failed to apply results:", err);
+      } finally {
+        setIsResolvingFields(false);
       }
     },
     [formState, setFormState],
@@ -544,6 +548,7 @@ function FillyControllerInner({
     appliedRef.current = false;
     setFilledCount(0);
     setAppliedFields([]);
+    setIsResolvingFields(false);
     setTranscriptMinimized(false);
     await filly.startRecording();
   };
@@ -929,7 +934,14 @@ function FillyControllerInner({
                 {t("extracted_values")}
               </span>
               <div className="mt-1 space-y-1">
-                {appliedFields.length === 0 ? (
+                {isResolvingFields ? (
+                  <div className="flex items-center justify-center py-2">
+                    <p className="text-xs text-gray-400">
+                      {t("filly_is_resolving_fields")}
+                    </p>
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                ) : appliedFields.length === 0 ? (
                   <p className="text-xs text-gray-400">
                     {t("no_matching_fields")}
                   </p>
@@ -937,27 +949,36 @@ function FillyControllerInner({
                   appliedFields.map((field, i) => (
                     <div
                       key={`${field.qId}-${i}`}
-                      className="flex items-center justify-between rounded bg-gray-50 px-2 py-1"
+                      className={cn(
+                        "flex items-center justify-between rounded px-2 py-1",
+                        field.error ? "bg-amber-50" : "bg-gray-50",
+                      )}
                     >
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 mr-5">
                         {field.label}
                       </span>
-                      <span className="text-xs font-medium text-gray-900">
-                        {field.structuredValue
-                          ? t("n_filled", {
-                              n: Array.isArray(field.structuredValue)
-                                ? field.structuredValue.length
-                                : 1,
-                            })
-                          : field.coding
-                            ? field.coding.display
-                            : (field.matchedValue ?? t("n_filled", { n: 1 }))}
-                        {field.matchedNote && (
-                          <span className="ml-1 font-normal text-gray-500">
-                            ({field.matchedNote})
-                          </span>
-                        )}
-                      </span>
+                      {field.error ? (
+                        <span className="text-xs font-medium text-amber-700">
+                          {field.error}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-gray-900">
+                          {field.structuredValue
+                            ? t("n_filled", {
+                                n: Array.isArray(field.structuredValue)
+                                  ? field.structuredValue.length
+                                  : 1,
+                              })
+                            : field.coding
+                              ? field.coding.display
+                              : (field.matchedValue ?? t("n_filled", { n: 1 }))}
+                          {field.matchedNote && (
+                            <span className="ml-1 font-normal text-gray-500">
+                              ({field.matchedNote})
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </div>
                   ))
                 )}

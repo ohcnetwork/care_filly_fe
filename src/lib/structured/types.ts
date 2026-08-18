@@ -10,7 +10,8 @@ export type SupportedStructuredType =
   | "allergy_intolerance"
   | "medication_statement"
   | "medication_request"
-  | "service_request";
+  | "service_request"
+  | "time_of_death";
 
 export const SUPPORTED_STRUCTURED_TYPES: SupportedStructuredType[] = [
   "symptom",
@@ -19,6 +20,7 @@ export const SUPPORTED_STRUCTURED_TYPES: SupportedStructuredType[] = [
   "medication_statement",
   "medication_request",
   "service_request",
+  "time_of_death",
 ];
 
 export function isSupportedStructuredType(

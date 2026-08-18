@@ -390,9 +390,7 @@ export async function deserializeMedicationRequests(
           },
         };
       } catch (err) {
-        errors.push(
-          `Failed to parse prescription: ${err instanceof Error ? err.message : "unknown error"}`,
-        );
+        console.error("Error deserializing medication request row:", err);
         return undefined;
       }
     }),

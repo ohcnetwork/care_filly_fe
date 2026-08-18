@@ -1,0 +1,52 @@
+name: Add Preview URL to PR
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  update-pr-body:
+    if: >
+      github.event.issue.pull_request != null &&
+      github.event.comment.user.login == 'cloudflare-workers-and-pages[bot]' &&
+      contains(github.event.comment.body, 'Branch Preview URL')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update PR body with branch preview URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Cloudflare's comment embeds the link as: Branch Preview URL:</strong></td><td>\n<a href='...'>
+            const match = context.payload.comment.body.match(
+              /Branch Preview URL:.*?href=['"]([^'"]+)['"]/s,
+            );
+            if (!match) return;
+            const previewUrl = match[1];
+
+            const prNumber = context.payload.issue.number;
+            const marker = "<!-- cloudflare-preview-url -->";
+            const section = `${marker}\n🚀 **Branch Preview:** ${previewUrl}`;
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            let body = pr.body || "";
+            body = body.includes(marker)
+              ? body.replace(new RegExp(`${marker}.*`, "s"), section)
+              : `${body}\n\n${section}`;
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              body,
+            });
+
+
