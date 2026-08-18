@@ -23,6 +23,7 @@ import { lookupCode } from "./valueset";
 interface DeserializeResult<T> {
   data: T;
   errors: string[];
+  supplementalNote?: string;
 }
 
 interface MedicationRequestRow {
@@ -216,6 +217,7 @@ export async function deserializeMedicationRequests(
   }
 
   const seenKeys = new Set(currentKeys);
+  const unmatched: string[] = [];
 
   const parsed = await Promise.all(
     data.map(async (item) => {
@@ -226,8 +228,10 @@ export async function deserializeMedicationRequests(
           const names = normalizeDisplayNames(
             normalizeCodeField(row.medicine ?? row.medication)?.display_names,
           );
+          const label = names[0] ?? "unknown medication";
+          unmatched.push(label);
           errors.push(
-            `Could not find a prescribed medication matching "${names[0] ?? "unknown"}". Please enter manually.`,
+            `Could not find a prescribed medication matching "${label}". Please enter manually.`,
           );
           return undefined;
         }
@@ -345,5 +349,7 @@ export async function deserializeMedicationRequests(
     ...parsed.filter((item): item is NonNullable<typeof item> => !!item),
   ];
 
-  return { data: merged, errors };
+  const supplementalNote = unmatched.length ? unmatched.join(", ") : undefined;
+
+  return { data: merged, errors, supplementalNote };
 }
