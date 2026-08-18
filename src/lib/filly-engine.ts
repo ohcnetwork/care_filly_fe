@@ -53,12 +53,13 @@ export class VadRecorder {
   }
 
   /** Open the mic and begin VAD segmentation. */
-  async start(): Promise<void> {
+  async start(deviceId?: string): Promise<void> {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
+        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
       },
       video: false,
     });
@@ -71,6 +72,7 @@ export class VadRecorder {
       redemptionFrames: 24,
       minSpeechFrames: 8,
       preSpeechPadFrames: 8,
+      submitUserSpeechOnPause: true,
       onSpeechEnd: (audio: Float32Array) => {
         if (this.paused) return;
         if (audio.length < MIN_UTTERANCE_SECONDS * VAD_SAMPLE_RATE) return;
