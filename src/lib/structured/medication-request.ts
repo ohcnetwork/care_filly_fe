@@ -286,9 +286,9 @@ export async function deserializeMedicationRequests(
           text: frequency.text,
           timing: !asNeededFor
             ? {
-                ...frequency.timingOption.timing,
+                ...frequency.timingOption?.timing,
                 repeat: {
-                  ...frequency.timingOption.timing.repeat,
+                  ...frequency.timingOption?.timing.repeat,
                   bounds_duration: {
                     value: String(duration.value),
                     unit: duration.unit,
