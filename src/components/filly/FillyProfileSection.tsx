@@ -5,6 +5,7 @@ import { FILLY_BASE_URL } from "@/lib/filly-be";
 
 import { Switch } from "@/components/ui/switch";
 
+import { useHasFacilityPermission } from "@/hooks/useFacilityPermission";
 import { useFillyPreference } from "@/hooks/useFillyPreference";
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -27,6 +28,8 @@ export default function FillyProfileSection({
 }: FillyProfileSectionProps) {
   const { t } = useTranslation();
   const pref = useFillyPreference();
+  const { hasPermission, isLoading: isPermissionLoading } =
+    useHasFacilityPermission("can_use_filly");
   const [error, setError] = useState<string | null>(null);
 
   if (!FILLY_BASE_URL) return null;
@@ -39,6 +42,37 @@ export default function FillyProfileSection({
       setError(err instanceof Error ? err.message : t("failed"));
     }
   };
+
+  if (isPermissionLoading || !hasPermission) {
+    return (
+      <div className={`care-filly-fe-container ${className ?? ""}`}>
+        <section className="flex flex-col gap-5 sm:flex-row">
+          {/* Left: label + description */}
+          <div className="sm:w-1/4">
+            <div className="my-1 text-sm leading-5">
+              <p className="mb-2 font-semibold">{t("ai_filly")}</p>
+              <p className="text-secondary-600">
+                {t("filly_profile_section_description")}
+              </p>
+            </div>
+          </div>
+
+          {/* Right: card */}
+          <div className="sm:w-3/4">
+            <div className="overflow-visible rounded-lg bg-white px-4 py-5 shadow-sm sm:rounded-lg sm:px-6 items-center h-full flex">
+              {isPermissionLoading ? (
+                <Loader2 className="size-6 shrink-0 animate-spin text-gray-400" />
+              ) : (
+                <p className="text-sm text-secondary-600">
+                  {t("no_permission_filly")}
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className={`care-filly-fe-container ${className ?? ""}`}>

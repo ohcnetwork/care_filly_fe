@@ -11,6 +11,7 @@ import {
 interface FormQuestion {
   id: string;
   text: string;
+  description?: string;
   type: string;
   structured_type?: string;
   questions?: FormQuestion[];
@@ -22,6 +23,7 @@ interface FormQuestion {
 export interface FormField {
   id: string;
   label: string;
+  description?: string;
   type: string;
   structuredType?: SupportedStructuredType;
   options?: string[];
@@ -65,6 +67,7 @@ function collectFields(questions: FormQuestion[], out: FormField[]) {
       out.push({
         id: q.id,
         label: q.text,
+        description: q.description,
         type: q.type,
         structuredType: q.structured_type,
       });
@@ -83,6 +86,7 @@ function collectFields(questions: FormQuestion[], out: FormField[]) {
     const field: FormField = {
       id: q.id,
       label: q.text,
+      description: q.description,
       type: q.type,
     };
 
@@ -119,7 +123,10 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
   const specs: MedispeakFieldSpec[] = [];
   for (const f of fields) {
     if (f.structuredType) {
-      const description = `${getStructuredFieldDescription(f.structuredType, f.label)}; example: ${JSON.stringify(getStructuredFieldExample(f.structuredType))}`;
+      const description = withHelpText(
+        f,
+        `${getStructuredFieldDescription(f.structuredType, f.label)}; example: ${JSON.stringify(getStructuredFieldExample(f.structuredType))}`,
+      );
       specs.push({ key: f.label, label: f.label, type: "string", description });
       continue;
     }
@@ -129,12 +136,15 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         label: f.label,
         type: "single_select",
         enum: ["true", "false", BOOLEAN_NOT_MENTIONED],
-        description: `Whether the clinician explicitly stated this. Use "${BOOLEAN_NOT_MENTIONED}" if not mentioned — never guess "false".`,
+        description: withHelpText(
+          f,
+          `Whether the clinician explicitly stated this. Use "${BOOLEAN_NOT_MENTIONED}" if not mentioned — never guess "false".`,
+        ),
       });
       specs.push(
         noteSpec(
           f.label,
-          `Additional commentary about "${f.label}" beyond yes/no (e.g. ` +
+          `Additional commentary about "${f.label}" beyond yes/no yes/not (e.g. ` +
             "timing, severity, context) if explicitly mentioned.",
         ),
       );
@@ -143,10 +153,12 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         key: f.label,
         label: f.label,
         type: "number",
-        description:
+        description: withHelpText(
+          f,
           "Numeric value only. If the clinician only gave a descriptive " +
-          `term (e.g. "normal", "elevated") with no number, leave this out ` +
-          `and use "${f.label}_note" instead.`,
+            `term (e.g. "normal", "elevated") with no number, leave this out ` +
+            `and use "${f.label}_note" instead.`,
+        ),
       });
       specs.push(
         noteSpec(
@@ -163,6 +175,7 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         label: f.label,
         type: "single_select",
         enum: f.options,
+        description: withHelpText(f),
       });
       specs.push(
         noteSpec(
@@ -179,17 +192,25 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         key: f.label,
         label: f.label,
         type: "string",
-        description:
+        description: withHelpText(
+          f,
           `The clinical term the clinician used for "${f.label}", as JSON: ` +
-          '{"code": "<code if known, else empty string>", "display_names": ' +
-          '["<exact term used>", "<a close synonym, if any>"]}. Only ' +
-          "include if explicitly mentioned.",
+            '{"code": "<code if known, else empty string>", "display_names": ' +
+            '["<exact term used>", "<a close synonym, if any>"]}. Only ' +
+            "include if explicitly mentioned.",
+        ),
       });
     } else {
-      specs.push({ key: f.label, label: f.label, type: "string" });
+      specs.push({ key: f.label, label: f.label, type: "string", description: withHelpText(f) });
     }
   }
   return specs;
+}
+
+// The CARE question's own help text/description
+function withHelpText(f: FormField, generated?: string): string | undefined {
+  if (!f.description) return generated;
+  return generated ? `${f.description} ${generated}` : f.description;
 }
 
 // Free text fields already hold arbitrary commentary in their own value, so

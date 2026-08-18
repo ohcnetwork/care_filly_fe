@@ -21,6 +21,7 @@
   "filly_profile_section_description": "Record consultations and let AI fill clinical forms for you. Enabling requires accepting the terms and conditions.",
   "minimize": "Minimize",
   "minimize_transcript": "Minimize transcript",
+  "no_permission_filly": "You do not have permission to use Filly on this facility.",
   "pause": "Pause",
   "paused": "Paused",
   "position_reset": "Position reset",
