@@ -357,6 +357,7 @@ function FillyControllerInner({
   // extracted data, since a hallucinated/unresolved/disabled value never
   // reaches here even though Medispeak's raw output had something for it.
   const [appliedFields, setAppliedFields] = useState<FieldFill[]>([]);
+  const [isResolvingFields, setIsResolvingFields] = useState(false);
 
   // The user's own filly opt-in from the profile page.
   const preference = useFillyPreference();
@@ -398,6 +399,7 @@ function FillyControllerInner({
       }
       if (appliedRef.current) return;
       appliedRef.current = true;
+      setIsResolvingFields(true);
 
       try {
         const fieldsToFill = await collectFieldsToFill(
@@ -433,6 +435,8 @@ function FillyControllerInner({
       } catch (err) {
         appliedRef.current = false;
         console.error("[Filly] Failed to apply results:", err);
+      } finally {
+        setIsResolvingFields(false);
       }
     },
     [formState, setFormState],
@@ -544,6 +548,7 @@ function FillyControllerInner({
     appliedRef.current = false;
     setFilledCount(0);
     setAppliedFields([]);
+    setIsResolvingFields(false);
     setTranscriptMinimized(false);
     await filly.startRecording();
   };
@@ -929,7 +934,14 @@ function FillyControllerInner({
                 {t("extracted_values")}
               </span>
               <div className="mt-1 space-y-1">
-                {appliedFields.length === 0 ? (
+                {isResolvingFields ? (
+                  <div className="flex items-center justify-center py-2">
+                    <p className="text-xs text-gray-400">
+                      {t("filly_is_resolving_fields")}
+                    </p>
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                ) : appliedFields.length === 0 ? (
                   <p className="text-xs text-gray-400">
                     {t("no_matching_fields")}
                   </p>
