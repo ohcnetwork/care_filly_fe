@@ -1,4 +1,5 @@
 import {
+  Check,
   CheckCircle2,
   ChevronDown,
   FileText,
@@ -6,6 +7,7 @@ import {
   Mic,
   Pause,
   Play,
+  Settings2,
   Sparkles,
   Square,
   X,
@@ -29,6 +31,7 @@ import { cn } from "@/lib/utils";
 
 import { useFilly } from "@/hooks/useFilly";
 import { useFillyPreference } from "@/hooks/useFillyPreference";
+import { useMicrophoneDevices } from "@/hooks/useMicrophoneDevices";
 import { useTranslation } from "@/hooks/useTranslation";
 
 interface FillyControllerProps {
@@ -354,9 +357,25 @@ function FillyControllerInner({
   // extracted data, since a hallucinated/unresolved/disabled value never
   // reaches here even though Medispeak's raw output had something for it.
   const [appliedFields, setAppliedFields] = useState<FieldFill[]>([]);
+  const [isResolvingFields, setIsResolvingFields] = useState(false);
 
   // The user's own filly opt-in from the profile page.
   const preference = useFillyPreference();
+
+  const [micMenuOpen, setMicMenuOpen] = useState(false);
+  const micMenuRef = useRef<HTMLDivElement>(null);
+  const mic = useMicrophoneDevices(micMenuOpen);
+
+  useEffect(() => {
+    if (!micMenuOpen) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      if (!micMenuRef.current?.contains(e.target as Node)) {
+        setMicMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [micMenuOpen]);
 
   // Lets the widget be dragged clear of a page's own submit button.
   const fabDrag = useDraggableFab();
@@ -380,6 +399,7 @@ function FillyControllerInner({
       }
       if (appliedRef.current) return;
       appliedRef.current = true;
+      setIsResolvingFields(true);
 
       try {
         const fieldsToFill = await collectFieldsToFill(
@@ -415,6 +435,8 @@ function FillyControllerInner({
       } catch (err) {
         appliedRef.current = false;
         console.error("[Filly] Failed to apply results:", err);
+      } finally {
+        setIsResolvingFields(false);
       }
     },
     [formState, setFormState],
@@ -526,6 +548,7 @@ function FillyControllerInner({
     appliedRef.current = false;
     setFilledCount(0);
     setAppliedFields([]);
+    setIsResolvingFields(false);
     setTranscriptMinimized(false);
     await filly.startRecording();
   };
@@ -572,7 +595,70 @@ function FillyControllerInner({
         title={t("ai_filly")}
       >
         <LongPressIndicator progress={fabDrag.longPressProgress} />
-        <div className="flex items-center gap-2">
+        <div ref={micMenuRef} className="relative flex items-center gap-2">
+          {micMenuOpen && (
+            <div className="absolute right-0 bottom-full mb-2 w-64 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl">
+              <div className="border-b border-gray-100 px-3 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase bg-linear-to-r from-primary-100 to-transparent">
+                {t("microphone")}
+              </div>
+              <div className="max-h-48 overflow-y-auto p-1">
+                {mic.error ? (
+                  <p className="px-2 py-1.5 text-xs text-gray-500">
+                    {t("microphone_permission_required")}
+                  </p>
+                ) : mic.isLoading ? (
+                  <div className="flex items-center justify-center py-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                ) : mic.devices.length === 0 ? (
+                  <p className="px-2 py-1.5 text-xs text-gray-500">
+                    {t("no_microphones_found")}
+                  </p>
+                ) : (
+                  mic.devices.map((device) => {
+                    const selected = device.deviceId === mic.selectedDeviceId;
+                    return (
+                      <button
+                        key={device.deviceId}
+                        onClick={() => {
+                          mic.selectDevice(device.deviceId);
+                          setMicMenuOpen(false);
+                        }}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs",
+                          selected
+                            ? "bg-primary-50 font-medium text-primary-700"
+                            : "text-gray-600 hover:bg-gray-50",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border",
+                            selected
+                              ? "border-primary-600 bg-primary-600"
+                              : "border-gray-300 bg-white",
+                          )}
+                        >
+                          {selected && (
+                            <Check className="h-2.5 w-2.5 text-white" />
+                          )}
+                        </span>
+                        <span className="truncate">{device.label}</span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setMicMenuOpen((open) => !open)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-gray-500 shadow-lg transition-colors hover:bg-gray-50"
+            title={t("microphone")}
+            aria-label={t("microphone")}
+          >
+            <Settings2 className="h-4 w-4" />
+          </button>
           <button
             onClick={handleStart}
             disabled={filly.isStarting}
@@ -848,7 +934,14 @@ function FillyControllerInner({
                 {t("extracted_values")}
               </span>
               <div className="mt-1 space-y-1">
-                {appliedFields.length === 0 ? (
+                {isResolvingFields ? (
+                  <div className="flex items-center justify-center py-2">
+                    <p className="text-xs text-gray-400">
+                      {t("filly_is_resolving_fields")}
+                    </p>
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                ) : appliedFields.length === 0 ? (
                   <p className="text-xs text-gray-400">
                     {t("no_matching_fields")}
                   </p>
@@ -856,27 +949,36 @@ function FillyControllerInner({
                   appliedFields.map((field, i) => (
                     <div
                       key={`${field.qId}-${i}`}
-                      className="flex items-center justify-between rounded bg-gray-50 px-2 py-1"
+                      className={cn(
+                        "flex items-center justify-between rounded px-2 py-1",
+                        field.error ? "bg-amber-50" : "bg-gray-50",
+                      )}
                     >
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 mr-5">
                         {field.label}
                       </span>
-                      <span className="text-xs font-medium text-gray-900">
-                        {field.structuredValue
-                          ? t("n_filled", {
-                              n: Array.isArray(field.structuredValue)
-                                ? field.structuredValue.length
-                                : 1,
-                            })
-                          : field.coding
-                            ? field.coding.display
-                            : (field.matchedValue ?? t("n_filled", { n: 1 }))}
-                        {field.matchedNote && (
-                          <span className="ml-1 font-normal text-gray-500">
-                            ({field.matchedNote})
-                          </span>
-                        )}
-                      </span>
+                      {field.error ? (
+                        <span className="text-xs font-medium text-amber-700">
+                          {field.error}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-gray-900">
+                          {field.structuredValue
+                            ? t("n_filled", {
+                                n: Array.isArray(field.structuredValue)
+                                  ? field.structuredValue.length
+                                  : 1,
+                              })
+                            : field.coding
+                              ? field.coding.display
+                              : (field.matchedValue ?? t("n_filled", { n: 1 }))}
+                          {field.matchedNote && (
+                            <span className="ml-1 font-normal text-gray-500">
+                              ({field.matchedNote})
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </div>
                   ))
                 )}

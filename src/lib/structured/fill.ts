@@ -31,6 +31,10 @@ export interface FieldFill {
   matchedNote: string | null;
   structuredValue?: unknown;
   coding?: Code;
+  /** Set when extraction found a value but couldn't use it (e.g. an
+   * unparseable date) — shown in place of a value so it's not silently
+   * dropped with no explanation. */
+  error?: string;
 }
 
 function normalizeLabel(s: string): string {
@@ -180,13 +184,18 @@ export function parseStructuredRaw(raw: unknown): unknown[] | null {
 
   let parsed: unknown = raw;
   if (typeof raw === "string") {
-    let result = tryParseJSON(raw);
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    if (!/^[[{]/.test(trimmed)) return [trimmed];
+
+    let result = tryParseJSON(trimmed);
     if (result === undefined) {
       // Some models over-escape a JSON-string field, embedding literal
       // backslash-quotes in the value itself (e.g. `[{\"code\":...}]`)
       // instead of returning plain JSON text. Unescaping once recovers it;
       // if that still doesn't parse, this really isn't structured data.
-      result = tryParseJSON(raw.replace(/\\"/g, '"'));
+      result = tryParseJSON(trimmed.replace(/\\"/g, '"'));
     }
     if (result === undefined) return null;
     parsed = result;
@@ -684,7 +693,7 @@ export async function collectFieldsToFill(
           );
         }
 
-        return { candidate, structuredValue, supplementalNote };
+        return { candidate, structuredValue, supplementalNote, errors };
       } catch (err) {
         console.warn(
           `[Filly] Skipping structured field "${candidate.questionText}":`,
@@ -697,7 +706,7 @@ export async function collectFieldsToFill(
 
   for (const result of structuredResults) {
     if (!result) continue;
-    const { candidate, structuredValue, supplementalNote } = result;
+    const { candidate, structuredValue, supplementalNote, errors } = result;
 
     const currentArr = Array.isArray(candidate.current)
       ? candidate.current
@@ -705,7 +714,20 @@ export async function collectFieldsToFill(
     const nextArr = Array.isArray(structuredValue) ? structuredValue : [];
     const hasNewItems = nextArr.length > currentArr.length;
 
-    if (!hasNewItems && !supplementalNote) continue;
+    if (!hasNewItems && !supplementalNote) {
+      if (errors.length) {
+        fieldsToFill.push({
+          qId: candidate.qId,
+          questionType: candidate.questionType,
+          label: candidate.questionText,
+          structuredType: candidate.structuredType,
+          matchedValue: null,
+          matchedNote: null,
+          error: errors.join("; "),
+        });
+      }
+      continue;
+    }
 
     fieldsToFill.push({
       qId: candidate.qId,

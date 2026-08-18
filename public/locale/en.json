@@ -19,8 +19,12 @@
   "filly_enabled": "AI Filly is enabled",
   "filly_enabled_note": "The Filly button will appear on consultation forms.",
   "filly_profile_section_description": "Record consultations and let AI fill clinical forms for you. Enabling requires accepting the terms and conditions.",
+  "microphone": "Microphone",
+  "microphone_description": "Choose which microphone Filly should record from.",
+  "microphone_permission_required": "Allow microphone access in your browser to choose a device.",
   "minimize": "Minimize",
   "minimize_transcript": "Minimize transcript",
+  "no_microphones_found": "No microphones were found.",
   "no_permission_filly": "You do not have permission to use Filly on this facility.",
   "pause": "Pause",
   "paused": "Paused",
@@ -39,5 +43,6 @@
   "transcribing_audio": "Transcribing audio",
   "transcript": "Transcript",
   "view": "View",
-  "no_matching_fields": "No matching fields found"
+  "no_matching_fields": "No matching fields found",
+  "filly_is_resolving_fields": "filly is resolving fields.."
 }

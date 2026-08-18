@@ -139,9 +139,6 @@ export async function deserializeSymptoms(
           note: noNullStrings(row.note as string),
         };
       } catch (err) {
-        errors.push(
-          `Failed to parse symptom: ${err instanceof Error ? err.message : "unknown error"}`,
-        );
         return undefined;
       }
     }),
@@ -349,4 +346,39 @@ export async function deserializeMedicationStatements(
   ];
 
   return { data: merged, errors };
+}
+
+export function deserializeTimeOfDeath(
+  data: unknown,
+  currentData: unknown[] | null | undefined,
+): DeserializeResult<unknown[]> {
+  if (!Array.isArray(data) || !data.length) {
+    return { data: currentData ?? [], errors: [] };
+  }
+
+  const first = data[0];
+  const candidate =
+    typeof first === "string"
+      ? first
+      : ((first as Record<string, unknown>)?.deceased_datetime as
+          | string
+          | undefined);
+
+  const local = candidate?.trim().replace(/Z$|[+-]\d{2}:?\d{2}$/i, "");
+  const validated = validateTime(local);
+  if (!validated) {
+    return {
+      data: currentData ?? [],
+      errors: [`Could not parse a valid time of death. Please enter manually.`],
+    };
+  }
+
+  if (validated > new Date().toISOString()) {
+    return {
+      data: currentData ?? [],
+      errors: ["Time of death cannot be in the future. Please enter manually."],
+    };
+  }
+
+  return { data: [validated], errors: [] };
 }

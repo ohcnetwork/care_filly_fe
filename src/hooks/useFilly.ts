@@ -10,6 +10,7 @@ import {
   pollMedispeakResult,
   uploadMedispeakSegment,
 } from "@/lib/medispeak-api";
+import { resolvePreferredMicDeviceId } from "@/lib/mic-preference";
 import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import {
   type FormField,
@@ -264,7 +265,9 @@ export function useFilly({
           },
         });
         recorderRef.current = recorder;
-        await recorder.start();
+        await recorder.start(
+          (await resolvePreferredMicDeviceId()) ?? undefined,
+        );
 
         updateStatus("recording");
         startTimer();
