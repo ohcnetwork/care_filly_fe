@@ -138,7 +138,12 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         enum: ["true", "false", BOOLEAN_NOT_MENTIONED],
         description: withHelpText(
           f,
-          `Whether the clinician explicitly stated this. Use "${BOOLEAN_NOT_MENTIONED}" if not mentioned — never guess "false".`,
+          `Whether the clinician explicitly stated this, as "true" or "false". ` +
+            `A negation (e.g. "not an emergency", "no fever", "denies chest pain", ` +
+            `"ruled out infection") is an explicit "false" — answer "false", do NOT ` +
+            `route it to "${f.label}_note" or treat it as unmentioned. Use ` +
+            `"${BOOLEAN_NOT_MENTIONED}" only if the clinician never addressed this ` +
+            `topic at all — never guess "false" for something simply not brought up.`,
         ),
       });
       specs.push(
@@ -201,7 +206,12 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         ),
       });
     } else {
-      specs.push({ key: f.label, label: f.label, type: "string", description: withHelpText(f) });
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "string",
+        description: withHelpText(f),
+      });
     }
   }
   return specs;
