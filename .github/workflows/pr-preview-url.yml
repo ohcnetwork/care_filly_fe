@@ -49,3 +49,10 @@ jobs:
               body,
             });
 
+            // Remove Cloudflare's own comment now that its URL lives in the PR body.
+            await github.rest.issues.deleteComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+            });
+
