@@ -125,10 +125,14 @@ function complaintMentionsFinding(
 
 /**
  * Guard against absolute dates the LLM anchored to the wrong reference (it
- * often assumes its training-cutoff year, e.g. 2023). An onset can never be in
- * the future, and should not predate a reasonable clinical bound.
+ * often assumes its training-cutoff year, e.g. 2023). Onsets and past
+ * occurrences can never be in the future, and should not predate a
+ * reasonable clinical bound.
  */
-function isPlausibleOnset(dateStr: string, referenceDate: Date): boolean {
+function isPlausiblePastDate(
+  dateStr: string,
+  referenceDate: Date = new Date(),
+): boolean {
   const today = formatDateQueryString(referenceDate);
   if (dateStr > today) return false;
 
@@ -171,7 +175,8 @@ export function resolveOnsetDatetime(
   // Fall back to explicit absolute dates, ignoring implausible values.
   for (const candidate of candidates) {
     const dateOnly = validateDate(candidate);
-    if (dateOnly && isPlausibleOnset(dateOnly, referenceDate)) return dateOnly;
+    if (dateOnly && isPlausiblePastDate(dateOnly, referenceDate))
+      return dateOnly;
   }
 
   const duration = row.onset_duration as
@@ -229,7 +234,7 @@ export function resolveLastOccurrence(
   if (!match) return null;
 
   const dateOnly = match[1];
-  if (isPlausibleOnset(dateOnly, referenceDate)) return dateOnly;
+  if (isPlausiblePastDate(dateOnly, referenceDate)) return dateOnly;
 
   return null;
 }

@@ -28,126 +28,136 @@ const SNOMED_INFO_EXAMPLE = {
   display_names: ["Fever", "Fever (finding)"],
 };
 
-export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
+/**
+ * Built per call, not at module import: the onset example dates must stay
+ * consistent with the "today" anchor injected into date-bearing field
+ * descriptions (see date-contract.ts), even for long-lived tabs.
+ */
+export function buildStructuredTemplateExamples(): Record<
   SupportedStructuredType,
   unknown
-> = {
-  symptom: [
-    {
-      snomed_info: SNOMED_INFO_EXAMPLE,
-      clinical_status: "active",
-      verification_status: "confirmed",
-      severity: "moderate",
-      onset_datetime: onsetExampleDate(14),
-      note: "for the past two weeks",
-    },
-  ],
-  diagnosis: [
-    {
-      snomed_info: SNOMED_INFO_EXAMPLE,
-      clinical_status: "active",
-      verification_status: "confirmed",
-      severity: "moderate",
-      onset_datetime: onsetExampleDate(14),
-      note: "for the past two weeks",
-    },
-  ],
-  allergy_intolerance: [
-    {
-      snomed_info: {
-        code: "418085001",
-        display_names: ["citrus fruit", "bitter orange"],
+> {
+  return {
+    symptom: [
+      {
+        snomed_info: SNOMED_INFO_EXAMPLE,
+        clinical_status: "active",
+        verification_status: "confirmed",
+        severity: "moderate",
+        onset_datetime: onsetExampleDate(14),
+        note: "for the past two weeks",
       },
-      clinical_status: "active",
-      category: "food",
-      criticality: "low",
-      verification_status: "confirmed",
-      last_occurrence: null,
-      note: null,
-    },
-  ],
-  medication_statement: [
-    {
-      medication: {
-        code: "376771007",
-        display_names: ["Zinc 25 mg oral capsule"],
+    ],
+    diagnosis: [
+      {
+        snomed_info: SNOMED_INFO_EXAMPLE,
+        clinical_status: "active",
+        verification_status: "confirmed",
+        severity: "moderate",
+        onset_datetime: onsetExampleDate(14),
+        note: "for the past two weeks",
       },
-      dosage_instructions: "Take 1 tablet daily",
-      information_source: "patient",
-      take_from: null,
-      take_until: null,
-      reason: null,
-      note: null,
-    },
-  ],
-  medication_request: [
-    {
-      medicine: {
-        code: "",
-        display_names: ["Dolo 650", "Paracetamol 650 mg oral tablet"],
+    ],
+    allergy_intolerance: [
+      {
+        snomed_info: {
+          code: "418085001",
+          display_names: ["citrus fruit", "bitter orange"],
+        },
+        clinical_status: "active",
+        category: "food",
+        criticality: "low",
+        verification_status: "confirmed",
+        last_occurrence: null,
+        note: null,
       },
-      intent: "order",
-      category: "outpatient",
-      priority: "routine",
-      dosage_frequency: "QD",
-      dosage_duration: { value: 5, unit: "d" },
-      dosage_dose_and_rate: {
-        type: "ordered",
-        dose_quantity: { value: 1, unit: "Tablet" },
+    ],
+    medication_statement: [
+      {
+        medication: {
+          code: "376771007",
+          display_names: ["Zinc 25 mg oral capsule"],
+        },
+        dosage_instructions: "Take 1 tablet daily",
+        information_source: "patient",
+        take_from: null,
+        take_until: null,
+        reason: null,
+        note: null,
       },
-      note: null,
-    },
-    {
-      medicine: {
-        code: "",
-        display_names: ["Pantoprazole 40mg", "Pantoprazole 40 mg oral tablet"],
+    ],
+    medication_request: [
+      {
+        medicine: {
+          code: "",
+          display_names: ["Dolo 650", "Paracetamol 650 mg oral tablet"],
+        },
+        intent: "order",
+        category: "outpatient",
+        priority: "routine",
+        dosage_frequency: "QD",
+        dosage_duration: { value: 5, unit: "d" },
+        dosage_dose_and_rate: {
+          type: "ordered",
+          dose_quantity: { value: 1, unit: "Tablet" },
+        },
+        note: null,
       },
-      intent: "order",
-      category: "outpatient",
-      priority: "routine",
-      dosage_frequency: "1-0-0",
-      dosage_duration: { value: 7, unit: "d" },
-      dosage_dose_and_rate: {
-        type: "ordered",
-        dose_quantity: { value: 1, unit: "Tablet" },
+      {
+        medicine: {
+          code: "",
+          display_names: [
+            "Pantoprazole 40mg",
+            "Pantoprazole 40 mg oral tablet",
+          ],
+        },
+        intent: "order",
+        category: "outpatient",
+        priority: "routine",
+        dosage_frequency: "1-0-0",
+        dosage_duration: { value: 7, unit: "d" },
+        dosage_dose_and_rate: {
+          type: "ordered",
+          dose_quantity: { value: 1, unit: "Tablet" },
+        },
+        note: null,
       },
-      note: null,
-    },
-  ],
-  service_request: [
-    {
-      activity_definition: {
-        title: "Lipid Panel",
-        display_names: ["Lipid Panel", "lipid profile"],
+    ],
+    service_request: [
+      {
+        activity_definition: {
+          title: "Lipid Panel",
+          display_names: ["Lipid Panel", "lipid profile"],
+        },
+        intent: "order",
+        priority: "routine",
+        note: null,
       },
-      intent: "order",
-      priority: "routine",
-      note: null,
-    },
-    {
-      activity_definition: {
-        title: "Complete Blood Count",
-        display_names: ["CBC", "Complete Blood Count"],
+      {
+        activity_definition: {
+          title: "Complete Blood Count",
+          display_names: ["CBC", "Complete Blood Count"],
+        },
+        intent: "order",
+        priority: "routine",
+        note: null,
       },
-      intent: "order",
-      priority: "routine",
-      note: null,
-    },
-  ],
-};
+    ],
+  };
+}
 
 export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
   SupportedStructuredType,
   string
 > = {
   symptom:
-    "array of symptoms; snomed_info required; onset_datetime as date only YYYY-MM-DD (if patient says '2 weeks ago', subtract from today; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
+    "array of symptoms; snomed_info required; onset_datetime as date only YYYY-MM-DD, resolved from the spoken timing per the date rules at the end of this description; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date",
   diagnosis:
-    "array of diagnoses; snomed_info required; onset_datetime as date only YYYY-MM-DD (compute from relative phrases like '3 days ago'; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
+    "array of diagnoses; snomed_info required; onset_datetime as date only YYYY-MM-DD, resolved from the spoken timing per the date rules at the end of this description; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date",
   allergy_intolerance:
-    "array of allergies/intolerances; snomed_info from substance hierarchy; if the patient mentions when they last had a reaction or exposure (e.g. '2 weeks ago', 'last month', 'in January'), compute last_occurrence as date only YYYY-MM-DD relative to today; if no occurrence timing is mentioned, leave last_occurrence as null — do NOT guess or fabricate a date",
+    "array of allergies/intolerances; snomed_info from substance hierarchy; if the patient mentions when they last had a reaction or exposure (e.g. 'previous Sunday', '2 weeks ago', 'in January'), compute last_occurrence as date only YYYY-MM-DD per the date rules at the end of this description; if no occurrence timing is mentioned, leave last_occurrence as null — do NOT guess or fabricate a date",
   medication_statement:
-    "array of medications the patient is currently taking (not new prescriptions)",
+    "array of medications the patient is currently taking (not new prescriptions); take_from/take_until as YYYY-MM-DD resolved from spoken timing per the date rules at the end of this description (take_until may be after today, e.g. 'continue for 2 more weeks'); null when not mentioned",
   medication_request:
     "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated",
   service_request:

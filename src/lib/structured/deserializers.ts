@@ -249,6 +249,9 @@ export async function deserializeAllergies(
           return undefined;
         }
 
+        // The model computes the date, guided by the date contract in the
+        // field description; resolveLastOccurrence re-derives relative
+        // phrases and rejects implausible absolutes rather than saving them.
         const lastOccurrence = resolveLastOccurrence(row);
         return {
           code,
