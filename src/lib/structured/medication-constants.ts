@@ -258,10 +258,18 @@ export function findTimingOption(
   return resolveDosageFrequency(frequency).timingOption;
 }
 
+/**
+ * `defaulted: true` marks a duration nobody actually stated — the caller can
+ * then decide whether inventing a course length is acceptable in its context.
+ */
 export function parseDosageDuration(
   duration: { value?: number | string; unit?: string } | null | undefined,
   fallbackText?: string | null,
-): { value: number; unit: (typeof BOUNDS_DURATION_UNITS)[number] } {
+): {
+  value: number;
+  unit: (typeof BOUNDS_DURATION_UNITS)[number];
+  defaulted?: boolean;
+} {
   if (duration?.value != null) {
     const value = Number(duration.value);
     if (Number.isFinite(value) && value > 0) {
@@ -296,7 +304,7 @@ export function parseDosageDuration(
     }
   }
 
-  return { value: 5, unit: "d" };
+  return { value: 5, unit: "d", defaulted: true };
 }
 
 export function inferDefaultDosageUnit(
@@ -325,12 +333,10 @@ export function inferDefaultDosageUnit(
       findDosageUnit("tablets")
     );
   }
-  if (/\b(solution|suspension|syrup|injection|milliliter|ml)\b/.test(text)) {
-    return findDosageUnit("milliliter");
-  }
-  if (/\b(drop|drops)\b/.test(text)) {
-    return findDosageUnit("drop");
-  }
+  // Dosage-form tokens (spray/puff/actuation) are checked before the
+  // vehicle/volume tokens below: real catalogue names routinely carry both
+  // ("Mometasone Nasal Spray Suspension", "Otrivin Nasal Spray 10 ml") and the
+  // form is the more specific signal for how a dose is counted.
   if (/\b(nasal spray|spray|sprays)\b/.test(text)) {
     return (
       DOSAGE_UNITS_CODES.find((unit) => unit.code === "{spray}") ??
@@ -348,6 +354,12 @@ export function inferDefaultDosageUnit(
       DOSAGE_UNITS_CODES.find((unit) => unit.code === "{actuat}") ??
       findDosageUnit("actuation")
     );
+  }
+  if (/\b(solution|suspension|syrup|injection|milliliter|ml)\b/.test(text)) {
+    return findDosageUnit("milliliter");
+  }
+  if (/\b(drop|drops)\b/.test(text)) {
+    return findDosageUnit("drop");
   }
 
   return DOSAGE_UNITS_CODES[0];

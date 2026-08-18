@@ -124,13 +124,27 @@ function parseDoseValue(
   const instructionText =
     typeof row.dosage_instructions === "string" ? row.dosage_instructions : "";
   const noteText = typeof row.note === "string" ? row.note : "";
-  const combined = `${instructionText} ${noteText}`.trim();
+  // Strip sequence markers ("phase 2 of 3", "step 1") before scanning for a
+  // dose: they are positional metadata, not a quantity, and the leading digit
+  // would otherwise be read as the dose of a tapering phase.
+  const combined = `${instructionText} ${noteText}`
+    .replace(/\b(?:phase|step|stage)\s*(?:no\.?\s*)?\d+(?:\s*of\s*\d+)?/gi, " ")
+    .trim();
   const match = combined.match(
     /\b(\d+(?:\.\d+)?)\s*(?:tablet|tablets|capsule|capsules|drop|drops|ml|count)?\b/i,
   );
   if (match) return match[1];
 
   return "1";
+}
+
+/**
+ * `findDosageUnit` never returns null — it falls back to
+ * `DOSAGE_UNITS_CODES[0]` ("tablets") for empty input — so a missing unit must
+ * be routed to the form-inferred default explicitly rather than via `??`.
+ */
+function resolveUnit(raw: string | undefined, inferred: Code): Code {
+  return raw?.trim() ? findDosageUnit(raw) : inferred;
 }
 
 function buildDoseAndRate(
@@ -159,11 +173,11 @@ function buildDoseAndRate(
       dose_range: {
         low: {
           value: String(raw.dose_range.low?.value ?? "1"),
-          unit: findDosageUnit(raw.dose_range.low?.unit) ?? unit,
+          unit: resolveUnit(raw.dose_range.low?.unit, unit),
         },
         high: {
           value: String(raw.dose_range.high?.value ?? "1"),
-          unit: findDosageUnit(raw.dose_range.high?.unit) ?? unit,
+          unit: resolveUnit(raw.dose_range.high?.unit, unit),
         },
       },
     };
@@ -181,7 +195,53 @@ function buildDoseAndRate(
     type: "ordered" as const,
     dose_quantity: {
       value: parseDoseValue(row, raw),
-      unit: findDosageUnit(quantity.unit) ?? unit,
+      unit: resolveUnit(quantity.unit, unit),
+    },
+  };
+}
+
+interface DosagePhase {
+  text?: string;
+  timing?: {
+    code?: Code;
+    repeat?: {
+      bounds_duration?: { value: string; unit: string };
+    };
+  };
+  as_needed_boolean?: boolean;
+  dose_and_rate?: unknown;
+}
+
+/**
+ * Identity of a single dosage phase: two rows that produce the same signature
+ * describe the same regimen, so the second is a restatement rather than a new
+ * step of a taper. A duration that was never stated (`durationDefaulted`) is
+ * excluded so an invented default cannot make two identical rows look distinct.
+ */
+function dosagePhaseSignature(
+  phase: DosagePhase | undefined,
+  durationDefaulted: boolean,
+): string {
+  return JSON.stringify([
+    phase?.timing?.code?.code ?? null,
+    phase?.text ?? null,
+    durationDefaulted ? null : (phase?.timing?.repeat?.bounds_duration ?? null),
+    !!phase?.as_needed_boolean,
+    phase?.dose_and_rate ?? null,
+  ]);
+}
+
+/** Blank an invented course length ("0" reads as "no bound set" in CARE). */
+function withoutInventedDuration<T extends DosagePhase>(phase: T): T {
+  if (!phase.timing?.repeat?.bounds_duration) return phase;
+  return {
+    ...phase,
+    timing: {
+      ...phase.timing,
+      repeat: {
+        ...phase.timing.repeat,
+        bounds_duration: { ...phase.timing.repeat.bounds_duration, value: "0" },
+      },
     },
   };
 }
@@ -304,6 +364,7 @@ export async function deserializeMedicationRequests(
 
         return {
           dedupeKey,
+          durationDefaulted: duration.defaulted === true,
           entry: {
             status: "active",
             intent:
@@ -349,20 +410,37 @@ export async function deserializeMedicationRequests(
   type ParsedEntry = NonNullable<(typeof parsed)[number]>["entry"];
   const newEntries: ParsedEntry[] = [];
   const dedupeKeyToIndex = new Map<string, number>();
+  const phaseSignatures = new Map<number, Set<string>>();
 
   for (const parsedItem of parsed) {
     if (!parsedItem) continue;
-    const { dedupeKey, entry } = parsedItem;
+    const { dedupeKey, durationDefaulted, entry } = parsedItem;
 
     if (dedupeKey && currentKeys.has(dedupeKey)) continue;
+
+    const [phase] = entry.dosage_instruction;
+    const signature = dosagePhaseSignature(phase, durationDefaulted);
 
     const existingIndex = dedupeKey
       ? dedupeKeyToIndex.get(dedupeKey)
       : undefined;
     if (dedupeKey && existingIndex != null) {
+      const signatures = phaseSignatures.get(existingIndex);
+      // A restated row (clinician repeating the same drug/dose/frequency) is
+      // not a new taper phase — appending it would read as a second course of
+      // the same regimen. Drop it, matching the pre-merge dedup behaviour.
+      if (signatures?.has(signature)) continue;
+      signatures?.add(signature);
+
       const existing = newEntries[existingIndex];
-      existing.dosage_instruction.push(...entry.dosage_instruction);
-      if (entry.note) {
+      // A duration nobody stated must not ride along on a follow-up phase: it
+      // silently extends the total course length. "0" is how CARE core encodes
+      // "no bound set" (getTimingBounds skips it), so the field renders empty
+      // for the clinician to fill instead of showing an invented one.
+      existing.dosage_instruction.push(
+        durationDefaulted ? withoutInventedDuration(phase) : phase,
+      );
+      if (entry.note && !existing.note?.includes(entry.note)) {
         existing.note = existing.note
           ? `${existing.note}\n${entry.note}`
           : entry.note;
@@ -371,6 +449,7 @@ export async function deserializeMedicationRequests(
     }
 
     if (dedupeKey) dedupeKeyToIndex.set(dedupeKey, newEntries.length);
+    phaseSignatures.set(newEntries.length, new Set([signature]));
     newEntries.push(entry);
   }
 

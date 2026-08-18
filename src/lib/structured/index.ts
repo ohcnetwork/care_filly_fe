@@ -130,7 +130,7 @@ export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
         type: "ordered",
         dose_quantity: { value: 2, unit: "spray" },
       },
-      note: "tapering dose, phase 1 of 2: 2 sprays in each nostril once daily for 2 weeks",
+      note: "tapering dose, first phase: 2 sprays in each nostril once daily for 2 weeks",
     },
     {
       medicine: {
@@ -149,7 +149,7 @@ export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
         type: "ordered",
         dose_quantity: { value: 1, unit: "spray" },
       },
-      note: "tapering dose, phase 2 of 2: 1 spray in each nostril once daily for 4 weeks after the initial phase",
+      note: "tapering dose, second phase after the initial two weeks: 1 spray in each nostril once daily for 4 weeks",
     },
   ],
   service_request: [
@@ -187,7 +187,7 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
   medication_statement:
     "array of medications the patient is currently taking (not new prescriptions)",
   medication_request:
-    "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated; dose unit must reflect what was actually said (tablet, mg, mL, drop, spray, puff, actuation, etc.) — never default to 'Tablet' for a non-tablet form; if the clinician describes a TAPERING or STEPPED dose for the same medicine (frequency, dose, or duration that changes over time, e.g. '2 sprays daily for 2 weeks, then 1 spray daily for 4 weeks'), output ONE separate array entry PER PHASE using the identical medicine.display_names for every phase, each with that phase's own dosage_frequency/dosage_duration/dosage_dose_and_rate, in chronological order, and note the phase number in the note field — do NOT collapse the phases into a single entry or drop any phase",
+    "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated; dose unit must reflect what was actually said (tablet, mg, mL, drop, spray, puff, actuation, etc.) — never default to 'Tablet' for a non-tablet form; if the clinician describes a TAPERING or STEPPED dose for the same medicine (frequency, dose, or duration that changes over time, e.g. '2 sprays daily for 2 weeks, then 1 spray daily for 4 weeks'), output ONE separate array entry PER PHASE using the identical medicine.display_names for every phase, each with that phase's own dosage_frequency/dosage_duration/dosage_dose_and_rate, in chronological order — array order alone encodes the sequence, so do NOT write a phase number (or any other leading count) into the note field, and every phase MUST carry its own explicit dosage_dose_and_rate.dose_quantity.value; do NOT collapse the phases into a single entry or drop any phase",
   service_request:
     "array of investigations/lab tests/imaging ordered; each needs activity_definition with title or display_names (e.g. Lipid Panel, CBC, Chest X-Ray); put catalog items here; put anything NOT in the facility catalog under the separate 'Other Investigation' field key or in the free-text note",
 };
