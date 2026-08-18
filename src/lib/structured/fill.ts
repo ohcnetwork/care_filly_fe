@@ -37,6 +37,12 @@ function normalizeLabel(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function withUnitSuffix(label: string, unit: unknown): string {
+  const u = unit as { code?: string; display?: string } | undefined;
+  const code = u?.code || u?.display;
+  return code ? `${label} (${code})` : label;
+}
+
 function isValueDataKey(key: string): boolean {
   return key !== "clinical_notes" && !key.endsWith("_note");
 }
@@ -599,9 +605,13 @@ export async function collectFieldsToFill(
         continue;
       }
 
-      const rawValue = matchVitalToQuestion(questionText, data);
-      const matchedNote = matchNoteToQuestion(questionText, data);
       const questionType = (question.type as string) || "";
+      const matchingText =
+        questionType === "decimal" || questionType === "integer"
+          ? withUnitSuffix(questionText, question.unit)
+          : questionText;
+      const rawValue = matchVitalToQuestion(matchingText, data);
+      const matchedNote = matchNoteToQuestion(matchingText, data);
 
       // "not_mentioned" is a sentinel meaning "no answer was given" — for
       // any question type (a stray fuzzy-match can surface it outside
