@@ -192,7 +192,9 @@ const FREQUENCY_ALIASES: Record<
 };
 
 export interface ResolvedDosageFrequency {
-  timingOption: MedicationTimingOption;
+  // `null` means the frequency was not mentioned — callers must not
+  // fabricate a default (e.g. QD) in that case.
+  timingOption: MedicationTimingOption | null;
   text?: string;
 }
 
@@ -202,11 +204,11 @@ export function resolveDosageFrequency(
   const defaultOption = MEDICATION_REQUEST_TIMING_OPTIONS.QD;
 
   if (frequency == null || frequency === "") {
-    return { timingOption: defaultOption };
+    return { timingOption: null };
   }
 
   const raw = String(frequency).trim();
-  if (!raw) return { timingOption: defaultOption };
+  if (!raw) return { timingOption: null };
 
   const normalized = raw.toLowerCase();
 
@@ -240,7 +242,7 @@ export function resolveDosageFrequency(
 
 export function findTimingOption(
   frequency: string | null | undefined,
-): MedicationTimingOption {
+): MedicationTimingOption | null {
   return resolveDosageFrequency(frequency).timingOption;
 }
 

@@ -284,18 +284,22 @@ export async function deserializeMedicationRequests(
             ? [additionalInstruction]
             : [],
           text: frequency.text,
-          timing: !asNeededFor
-            ? {
-                ...frequency.timingOption.timing,
-                repeat: {
-                  ...frequency.timingOption.timing.repeat,
-                  bounds_duration: {
-                    value: String(duration.value),
-                    unit: duration.unit,
+          // frequency.timingOption is null when the clinician never
+          // mentioned a dosage frequency — leave timing unset instead of
+          // fabricating a default (e.g. QD/"once a day").
+          timing:
+            !asNeededFor && frequency.timingOption
+              ? {
+                  ...frequency.timingOption.timing,
+                  repeat: {
+                    ...frequency.timingOption.timing.repeat,
+                    bounds_duration: {
+                      value: String(duration.value),
+                      unit: duration.unit,
+                    },
                   },
-                },
-              }
-            : undefined,
+                }
+              : undefined,
           as_needed_boolean: !!asNeededFor,
           as_needed_for: asNeededFor,
           site,
