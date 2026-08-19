@@ -484,20 +484,6 @@ const TIMING_KEY_TO_MAN: Record<string, string> = Object.fromEntries(
   Object.entries(MAN_FREQUENCY_MAP).map(([pattern, key]) => [key, pattern]),
 );
 
-// Comma-separated list of every accepted dosage_frequency label, taken
-// straight from each option's `display` so the LLM prompt can never drift from
-// what the resolver accepts. Each label carries the code and the
-// morning-noon-night pattern (e.g. "BID (1-1-0)"), and resolveDosageFrequency
-// matches the full label — so the model can copy one verbatim. Deduped because
-// a couple of variants share a display (e.g. TID (1-1-1)).
-export const DOSAGE_FREQUENCY_REFERENCE: string = [
-  ...new Set(
-    Object.values(MEDICATION_REQUEST_TIMING_OPTIONS).map(
-      (option) => option.display,
-    ),
-  ),
-].join(", ");
-
 const MAN_PATTERN = /^[\d]+(?:\/[\d]+)?(-[\d]+(?:\/[\d]+)?){1,3}$/;
 
 const FREQUENCY_ALIASES: Record<
