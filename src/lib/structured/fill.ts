@@ -596,7 +596,27 @@ export async function collectFieldsToFill(
         if (!label) continue;
 
         const raw = parseStructuredRaw(data[label]);
-        if (!raw?.length) continue;
+        if (!raw?.length) {
+          const hasRawValue =
+            data[label] != null &&
+            !(
+              typeof data[label] === "string" &&
+              (data[label] as string).trim() === ""
+            );
+          if (hasRawValue) {
+            fieldsToFill.push({
+              qId,
+              questionType: (question.type as string) || "structured",
+              label: questionText,
+              structuredType,
+              matchedValue: null,
+              matchedNote: null,
+              error:
+                "Could not parse the extracted value. Please enter manually.",
+            });
+          }
+          continue;
+        }
 
         structuredCandidates.push({
           qId,

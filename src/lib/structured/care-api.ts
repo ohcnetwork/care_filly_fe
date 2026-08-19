@@ -8,6 +8,10 @@ import {
   buildMedicationSearchQueries,
   pickBestProduct,
 } from "./medication-search";
+import {
+  buildPractitionerSearchQueries,
+  pickBestPractitioner,
+} from "./practitioner-search";
 import type { Code } from "./types";
 
 export interface CareUserMinimal {
@@ -32,6 +36,16 @@ export interface ProductKnowledgeBase {
 interface PaginatedResponse<T> {
   count: number;
   results: T[];
+}
+
+export interface TokenSlotMinimal {
+  id: string;
+  start_datetime: string; // timezone naive datetime, facility local time
+  end_datetime: string; // timezone naive datetime, facility local time
+  allocated: number;
+  availability: {
+    tokens_per_slot: number;
+  };
 }
 
 export function getFacilityIdFromUrl(): string | null {
@@ -194,4 +208,94 @@ export async function searchActivityDefinition(
   }
 
   return pickBestActivityDefinition([...seen.values()], queries);
+}
+
+async function fetchAvailableUsers(
+  facilityId: string,
+): Promise<CareUserMinimal[]> {
+  const baseUrl = window.CARE_API_URL;
+  if (!baseUrl) return [];
+
+  try {
+    const res = await fetch(
+      `${baseUrl}/api/v1/facility/${facilityId}/appointments/available_users/`,
+      { headers: getHeaders() },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as { users: CareUserMinimal[] };
+    return data.users ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Resolves a spoken doctor name (e.g. "Dr. Kumar") to a schedulable
+ *  practitioner in the facility. The `available_users` endpoint has no
+ *  server-side name filter, so candidates are fetched once and matched
+ *  locally — the same approach used for medicines/investigations above. */
+export async function searchPractitioner(
+  names: string[],
+  facilityId: string,
+): Promise<CareUserMinimal | null> {
+  const queries = buildPractitionerSearchQueries(names);
+  if (!queries.length) return null;
+
+  const users = await fetchAvailableUsers(facilityId);
+  return pickBestPractitioner(users, queries);
+}
+
+export interface SlotsForDayResult {
+  slots: TokenSlotMinimal[];
+  error?: string;
+}
+
+async function extractErrorMessage(res: Response): Promise<string> {
+  try {
+    const body: unknown = await res.json();
+    if (body && typeof body === "object" && "detail" in body) {
+      const detail = (body as { detail?: unknown }).detail;
+      if (typeof detail === "string") return detail;
+    }
+    if (Array.isArray(body)) return body.map(String).join("; ");
+    return `Request failed with status ${res.status}.`;
+  } catch {
+    return `Request failed with status ${res.status}.`;
+  }
+}
+
+export async function getSlotsForDay(
+  facilityId: string,
+  resourceId: string,
+  day: string,
+): Promise<SlotsForDayResult> {
+  const baseUrl = window.CARE_API_URL;
+  if (!baseUrl) {
+    return { slots: [], error: "CARE API URL is not configured." };
+  }
+
+  try {
+    const res = await fetch(
+      `${baseUrl}/api/v1/facility/${facilityId}/slots/get_slots_for_day/`,
+      {
+        method: "POST",
+        // getHeaders() returns a Headers instance — spreading it (`{
+        // ...getHeaders() }`) silently drops all its entries (Authorization
+        // included), since Headers doesn't expose own enumerable properties.
+        headers: getHeaders(),
+        body: JSON.stringify({
+          resource_type: "practitioner",
+          resource_id: resourceId,
+          day,
+        }),
+      },
+    );
+    if (!res.ok) return { slots: [], error: await extractErrorMessage(res) };
+    const data = (await res.json()) as { results: TokenSlotMinimal[] };
+    return { slots: data.results ?? [] };
+  } catch (err) {
+    return {
+      slots: [],
+      error: err instanceof Error ? err.message : "Failed to fetch slots.",
+    };
+  }
 }

@@ -350,6 +350,7 @@ function FillyControllerInner({
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
+  const [belowSheet, setBelowSheet] = useState(false);
   const appliedRef = useRef(false);
   const fillTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [filledCount, setFilledCount] = useState(0);
@@ -433,6 +434,13 @@ function FillyControllerInner({
             }
             if (field.structuredType === "medication_request") {
               revealMedicationAdvancedFields(field.qId, field.structuredValue);
+            }
+            if (field.structuredType === "appointment") {
+              setBelowSheet(true);
+              void driveAppointmentSlotPicker(
+                field.qId,
+                field.matchedNote,
+              ).finally(() => setBelowSheet(false));
             }
           }, index * FIELD_FILL_DELAY_MS);
 
@@ -712,7 +720,10 @@ function FillyControllerInner({
     return (
       <div
         ref={fabDrag.containerRef}
-        className="filly-pop-in fixed right-4 bottom-4 z-9999 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6"
+        className={cn(
+          "filly-pop-in fixed right-4 bottom-4 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6",
+          belowSheet ? "z-1" : "z-9999",
+        )}
         style={fabDragStyle}
         onPointerDown={fabDrag.onPointerDown}
         onClickCapture={fabDrag.onClickCapture}
@@ -889,7 +900,10 @@ function FillyControllerInner({
   return (
     <div
       ref={fabDrag.containerRef}
-      className="filly-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6"
+      className={cn(
+        "filly-pop-in fixed right-4 bottom-4 w-80 sm:right-6 sm:bottom-6",
+        belowSheet ? "z-1" : "z-9999",
+      )}
       style={fabDragStyle}
     >
       <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
@@ -1167,6 +1181,202 @@ function revealMedicationAdvancedFields(
     );
     toggle?.click();
   }, 100);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitFor<T>(
+  find: () => T | null | undefined,
+  timeoutMs = 4000,
+  intervalMs = 150,
+): Promise<T | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const found = find();
+    if (found) return found;
+    await sleep(intervalMs);
+  }
+  return null;
+}
+
+function findButtonByText(
+  root: ParentNode,
+  matches: (text: string) => boolean,
+): HTMLButtonElement | undefined {
+  return Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
+    (btn) => matches(btn.textContent?.trim().toLowerCase() ?? ""),
+  );
+}
+
+function setNativeInputValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** The practitioner search opens in a Radix dialog */
+function findPractitionerSearchDialog(): HTMLElement | null {
+  return (
+    Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(
+      (dialog) => dialog.querySelector("input[cmdk-input]"),
+    ) ?? null
+  );
+}
+
+/**
+ * Switches the "Practitioner" combobox to the doctor Filly resolved, but
+ * only when it isn't already showing them (covers both the common
+ * self-booking case, where it's already correct, and an explicitly named
+ * different doctor).
+ */
+async function selectPractitionerIfNeeded(
+  container: HTMLElement,
+  targetName: string,
+): Promise<void> {
+  const trigger = container.querySelector<HTMLButtonElement>(
+    'button[role="combobox"]',
+  );
+  if (!trigger) return;
+
+  const normalizedTarget = targetName.trim().toLowerCase();
+  if (!normalizedTarget) return;
+  if (
+    (trigger.textContent?.trim().toLowerCase() ?? "").includes(normalizedTarget)
+  ) {
+    return;
+  }
+
+  trigger.click();
+
+  const dialog = await waitFor(findPractitionerSearchDialog);
+  const input = dialog?.querySelector<HTMLInputElement>("input[cmdk-input]");
+  if (!dialog || !input) return;
+
+  setNativeInputValue(input, targetName);
+
+  const option = await waitFor(() =>
+    Array.from(dialog.querySelectorAll<HTMLElement>("[cmdk-item]")).find(
+      (item) => item.textContent?.toLowerCase().includes(normalizedTarget),
+    ),
+  );
+  if (!option) return;
+  option.click();
+  await sleep(150);
+}
+
+/**
+ * AppointmentQuestion's "selected slot" badge is local React state
+ * (selectedResource/selectedSlot in care_fe) that only ever updates through
+ * a real click on its date/slot picker — never from a formState write alone
+ * — so a slot filled by Filly is correct data but shows as "Select
+ * appointment slot" until this drives the actual Sheet UI: switch the
+ * Practitioner combobox to the resolved doctor (if not already selected),
+ * open the slot Sheet, page to the resolved month, click the resolved day,
+ * click the matching time slot, then Submit (mirroring exactly what a
+ * clinician would click). Bails out harmlessly at any step it can't
+ * complete — the slot_id already written to formState by
+ * applyFieldToState is unaffected either way.
+ */
+async function driveAppointmentSlotPicker(
+  qId: string,
+  supplementalNote: string | null,
+): Promise<void> {
+  const match = supplementalNote?.match(
+    /(\d{4}-\d{2}-\d{2}) at (\d{2}):(\d{2})/,
+  );
+  if (!match) return;
+  const [, dateStr, hour, minute] = match;
+  const targetDate = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(targetDate.getTime())) return;
+  const targetDay = String(targetDate.getDate());
+  const targetMonthLabel = targetDate.toLocaleString("default", {
+    month: "long",
+    year: "numeric",
+  });
+  const targetTime = `${hour}:${minute}`;
+  const practitionerName = supplementalNote?.match(/Dr\.\s*(.+?)\s*—/)?.[1];
+
+  await sleep(100);
+  const container = document.getElementById(`question-${qId}`);
+  if (!container) return;
+
+  if (practitionerName) {
+    await selectPractitionerIfNeeded(container, practitionerName);
+  }
+
+  const trigger = findButtonByText(
+    container,
+    (text) => text === "select appointment slot",
+  );
+  if (!trigger) return;
+  trigger.click();
+
+  const sheet = await waitFor(() =>
+    document.querySelector<HTMLElement>('[data-slot="sheet-content"]'),
+  );
+  if (!sheet) return;
+
+  const nextMonthBtn = sheet.querySelector<HTMLButtonElement>(
+    '[aria-label="Next Month"]',
+  );
+  const monthHeader = nextMonthBtn?.parentElement?.parentElement;
+  if (!nextMonthBtn || !monthHeader) return;
+
+  // Bookings only ever resolve to a future date, so only Next Month is
+  // needed — capped well beyond the deserializer's own +1 year date bound.
+  for (let i = 0; i < 24; i++) {
+    const label = monthHeader.querySelector("span")?.textContent?.trim();
+    if (label === targetMonthLabel) break;
+    nextMonthBtn.click();
+    await sleep(250);
+  }
+
+  const dayButton = await waitFor(() =>
+    Array.from(sheet.querySelectorAll<HTMLButtonElement>("button")).find(
+      (btn) =>
+        !btn.disabled &&
+        btn.querySelector("span")?.textContent?.trim() === targetDay,
+    ),
+  );
+  if (!dayButton) return;
+  dayButton.click();
+
+  const findSlotButton = () =>
+    Array.from(sheet.querySelectorAll<HTMLButtonElement>("button")).find(
+      (btn) =>
+        !btn.disabled &&
+        btn.querySelector("span")?.textContent?.trim() === targetTime,
+    );
+  const slotButton = await waitFor(findSlotButton);
+  if (!slotButton) {
+    // Can't confirm the exact slot — close without touching the data
+    // already correctly stored via applyFieldToState.
+    findButtonByText(sheet, (text) => text === "cancel")?.click();
+    return;
+  }
+
+  // AppointmentSlotPicker auto-selects the day's first open slot as soon as
+  // it loads — if our target IS that slot, it's already selected (the
+  // "primary" variant, bg-primary-700), and clicking it again would TOGGLE
+  // IT OFF. Give that auto-select a moment to settle, then only click if
+  // it isn't already the one selected.
+  await sleep(300);
+  if (!slotButton.className.includes("bg-primary-700")) {
+    slotButton.click();
+  }
+
+  const isSubmitEnabled = () => {
+    const btn = findButtonByText(sheet, (text) => text === "submit");
+    return btn && !btn.disabled ? btn : null;
+  };
+
+  const submitButton = await waitFor(isSubmitEnabled, 1500);
+  submitButton?.click();
 }
 
 export default FillyController;

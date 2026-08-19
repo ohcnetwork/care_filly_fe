@@ -1,3 +1,4 @@
+import { deserializeAppointments } from "./appointment";
 import type { CareUserMinimal } from "./care-api";
 import {
   deserializeAllergies,
@@ -21,6 +22,12 @@ export interface StructuredFillContext {
 function onsetExampleDate(daysAgo: number): string {
   const date = new Date();
   date.setDate(date.getDate() - daysAgo);
+  return formatDateQueryString(date);
+}
+
+function bookingExampleDate(daysAhead: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + daysAhead);
   return formatDateQueryString(date);
 }
 
@@ -230,6 +237,14 @@ export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
     },
   ],
   time_of_death: "2026-08-18T15:45:00.000Z",
+  appointment: [
+    {
+      practitioner_name: "Dr. Kumar",
+      date: bookingExampleDate(7),
+      time: "afternoon",
+      reason: "follow-up consultation",
+    },
+  ],
 };
 
 export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
@@ -250,6 +265,7 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
     "array of investigations/lab tests/imaging ordered; each needs activity_definition with title or display_names (e.g. Lipid Panel, CBC, Chest X-Ray); put catalog items here; put anything NOT in the facility catalog under the separate 'Other Investigation' field key or in the free-text note; priority is exactly one of routine | urgent | asap | stat — 'as soon as possible'/'ASAP' maps to asap (NOT urgent), 'urgent' is for urgent-but-not-immediate, 'stat' is for immediate/emergency, default routine when unstated; patient_instruction is any instruction spoken TO THE PATIENT about that specific test (fasting/food restriction, hydration, stopping a medication beforehand, etc.) — capture it whenever mentioned, even briefly, it is a very common field, do not leave it null when the clinician gives such an instruction; body_site is only for a test/imaging targeting a specific anatomical location (e.g. chest X-ray, knee MRI), as snomed_info { code, display_names }, omit if not mentioned",
   time_of_death:
     "the exact date/time the clinician pronounced death, as a plain ISO datetime string (e.g. '2026-05-02T02:00:00'); only include if a death pronouncement was explicitly stated (e.g. 'died around 2 AM', 'time of death 14:20', 'died/dead on 24 may 2025'); leave this out entirely otherwise — never infer or guess a time",
+  appointment: `array with a single follow-up appointment to book; only include it if the clinician explicitly asked to schedule/book a follow-up/review visit (e.g. 'book a follow-up with Dr. Kumar next Tuesday', 'schedule her for a review in 2 weeks', 'book a follow up with me on Tuesday') — never invent one; practitioner_name is the doctor's name as spoken, WITH any 'Dr.'/title kept or stripped, either is fine; most follow-ups are with the SAME doctor currently seeing the patient, so if the clinician says 'with me'/'same doctor' or doesn't name anyone at all, either omit practitioner_name or set it to "me" — the current treating doctor is used automatically, this is the common case and is NOT an error; only set practitioner_name to an actual name when a DIFFERENT doctor is explicitly named; date is the appointment date as YYYY-MM-DD, resolved as a FUTURE date relative to today, ${formatDateQueryString(new Date())} (e.g. 'next Tuesday', 'in two weeks', 'tomorrow') — never a past date, and never fabricate one if no timing was mentioned (omit the entry instead); time is the spoken time preference verbatim if any (e.g. '3 PM', 'morning', 'after lunch'), or null if not mentioned — the nearest open slot is used; reason is the visit's purpose/reason if stated (e.g. 'follow-up', 'review of blood test results'), else null`,
 };
 
 export async function deserializeStructuredData(
@@ -299,6 +315,11 @@ export async function deserializeStructuredData(
     }
     case "time_of_death":
       return deserializeTimeOfDeath(raw, current as unknown[] | null);
+    case "appointment":
+      return deserializeAppointments(raw, current as unknown[] | null, {
+        facilityId: context?.facilityId,
+        currentUser: context?.currentUser,
+      });
     default:
       return { data: current, errors: [] };
   }
