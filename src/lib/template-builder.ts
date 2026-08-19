@@ -8,6 +8,12 @@ import {
   isSupportedStructuredType,
 } from "@/lib/structured/types";
 
+interface FormUnit {
+  code?: string;
+  display?: string;
+  system?: string;
+}
+
 interface FormQuestion {
   id: string;
   text: string;
@@ -18,6 +24,7 @@ interface FormQuestion {
   answer_option?: Array<{ value: string; display?: string }>;
   answer_value_set?: string;
   max_length?: number;
+  unit?: FormUnit;
 }
 
 export interface FormField {
@@ -28,6 +35,12 @@ export interface FormField {
   structuredType?: SupportedStructuredType;
   options?: string[];
   answerValueSet?: string;
+  unit?: FormUnit;
+}
+
+export function withUnitSuffix(label: string, unit?: FormUnit): string {
+  const code = unit?.code || unit?.display;
+  return code ? `${label} (${code})` : label;
 }
 
 /**
@@ -88,6 +101,7 @@ function collectFields(questions: FormQuestion[], out: FormField[]) {
       label: q.text,
       description: q.description,
       type: q.type,
+      unit: q.unit,
     };
 
     if (q.answer_option?.length) {
@@ -149,21 +163,23 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         ),
       );
     } else if (f.type === "decimal" || f.type === "integer") {
+      const key = withUnitSuffix(f.label, f.unit);
+      const unitHint = f.unit?.display || f.unit?.code;
       specs.push({
-        key: f.label,
-        label: f.label,
+        key,
+        label: key,
         type: "number",
         description: withHelpText(
           f,
-          "Numeric value only. If the clinician only gave a descriptive " +
-            `term (e.g. "normal", "elevated") with no number, leave this out ` +
-            `and use "${f.label}_note" instead.`,
+          `Numeric value only${unitHint ? ` (in ${unitHint})` : ""}. If the ` +
+            'clinician only gave a descriptive term (e.g. "normal", "elevated") ' +
+            `with no number, leave this out and use "${key}_note" instead.`,
         ),
       });
       specs.push(
         noteSpec(
-          f.label,
-          `Descriptive/qualitative commentary for "${f.label}" (e.g. "normal", ` +
+          key,
+          `Descriptive/qualitative commentary for "${key}" (e.g. "normal", ` +
             `"very high", "borderline") if the clinician gave any — whether or ` +
             'not they also gave a number (e.g. "120, very high" -> number 120, ' +
             `note "very high"). Only include if explicitly mentioned.`,
@@ -201,7 +217,12 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         ),
       });
     } else {
-      specs.push({ key: f.label, label: f.label, type: "string", description: withHelpText(f) });
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "string",
+        description: withHelpText(f),
+      });
     }
   }
   return specs;
