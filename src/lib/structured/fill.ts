@@ -3,6 +3,10 @@ import {
   getEncounterIdFromUrl,
   getFacilityIdFromUrl,
 } from "./care-api";
+import {
+  DATE_BEARING_STRUCTURED_TYPES,
+  buildDateContext,
+} from "./date-contract";
 import { normalizeSnomedInfo } from "./deserializers";
 import {
   STRUCTURED_TEMPLATE_DESCRIPTIONS,
@@ -745,6 +749,18 @@ export async function collectFieldsToFill(
       structuredValue: hasNewItems ? nextArr : undefined,
     });
 
+    if (errors.length) {
+      fieldsToFill.push({
+        qId: candidate.qId,
+        questionType: candidate.questionType,
+        label: candidate.questionText,
+        structuredType: candidate.structuredType,
+        matchedValue: null,
+        matchedNote: null,
+        error: errors.join("; "),
+      });
+    }
+
     if (candidate.structuredType === "service_request") {
       const otherLabel = findOtherInvestigationLabel(data);
       const directOtherValue = otherLabel
@@ -883,7 +899,9 @@ export function getStructuredFieldDescription(
   structuredType: SupportedStructuredType,
   label: string,
 ): string {
-  return `"${label}" (${STRUCTURED_TEMPLATE_DESCRIPTIONS[structuredType]})`;
+  const base = `"${label}" (${STRUCTURED_TEMPLATE_DESCRIPTIONS[structuredType]})`;
+  if (!DATE_BEARING_STRUCTURED_TYPES.has(structuredType)) return base;
+  return `${base}. ${buildDateContext()}`;
 }
 
 export function getStructuredFieldExample(
