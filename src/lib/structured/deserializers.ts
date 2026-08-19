@@ -76,7 +76,7 @@ export function normalizeSnomedInfo(
   return null;
 }
 
-function formatDisplayNames(names: string[]): string {
+export function formatDisplayNames(names: string[]): string {
   return names.length ? names.join(", ") : "unknown term";
 }
 
@@ -321,7 +321,12 @@ export async function deserializeMedicationStatements(
           medicationRaw && typeof medicationRaw === "object"
             ? normalizeSnomedInfo({ snomed_info: medicationRaw })
             : normalizeSnomedInfo(row);
-        if (!medication) return undefined;
+        if (!medication) {
+          errors.push(
+            "Could not identify a medication from the extracted data. Please enter manually.",
+          );
+          return undefined;
+        }
 
         const displayNames = normalizeDisplayNames(medication.display_names);
         const code = await lookupCode(

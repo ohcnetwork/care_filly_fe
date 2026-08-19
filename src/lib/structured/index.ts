@@ -80,6 +80,18 @@ export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
       reason: null,
       note: null,
     },
+    {
+      medication: {
+        code: "",
+        display_names: ["Metformin 500mg", "Metformin 500 mg oral tablet"],
+      },
+      dosage_instructions: "1 tablet twice daily",
+      information_source: "related_person",
+      take_from: onsetExampleDate(365 * 3),
+      take_until: null,
+      reason: "Diabetes",
+      note: null,
+    },
   ],
   medication_request: [
     {
@@ -234,7 +246,7 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
   allergy_intolerance:
     "array of allergies/intolerances; snomed_info from substance hierarchy (code must always be left as an empty string); criticality is exactly one of low | high | unable_to_assess (map 'mild'/'moderate' to low, 'severe'/'anaphylaxis' to high, use unable_to_assess if not stated or unclear — never use any other word); last_occurrence is the date (YYYY-MM-DD) of the most recent reaction, only if explicitly mentioned (e.g. 'last reaction was 2 weeks ago', 'happened last month', since 2020) — compute relative phrases from today's date, omit entirely if not mentioned, never guess",
   medication_statement:
-    "array of medications the patient is currently taking (not new prescriptions)",
+    "array of medications the patient is ALREADY taking (not new prescriptions — those go under medication_request instead); take_from is when they started taking it, as date only YYYY-MM-DD — compute from relative phrases like 'for the past 3 years', 'since last month' (subtract from today); do NOT fabricate it if no duration/start is mentioned at all, leave null; take_until is when they stopped — only set it if the patient says they no longer take it, otherwise null (still taking it now); reason is why they take it, e.g. 'for diabetes', 'for high blood pressure' — capture it whenever stated, do not leave it null when a reason was given; information_source is who reported this medication to the clinician: 'patient' (default — the patient themselves reports it), 'practitioner' (another clinician's report/referral), or 'related_person' (a caregiver/family member reporting on the patient's behalf, e.g. 'her son says she takes...', 'the attendant mentioned') — default to patient when the source isn't stated",
   medication_request:
     "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated — keep the specific time of day when spoken (see the examples: 'morning and noon' → 1-1-0, 'every morning' → 1-0-0), and use one entry per medicine, never a separate row per time of day; for a taper/step regimen where the dose or frequency explicitly changes partway through (e.g. '1 tablet daily for 2 weeks, then 2 tablets daily for 4 weeks'), use dosage_phases (an array of {dosage_frequency, dosage_duration, dosage_dose_and_rate}) instead of the flat fields — one entry per phase, in the order stated; omit dosage_phases entirely for an ordinary single-phase prescription. ALWAYS include these six keys on every item, set to null when not mentioned — never just drop the key: dosage_additional_instruction ({code: '', display_names: [...]}) — capture this whenever the clinician gives an instruction like 'take with food', 'avoid alcohol', 'on an empty stomach', it's easy to miss but very common, do not leave it null when one was said; dosage_as_needed_for ({code: '', display_names: [...]}) for a PRN reason like 'as needed for pain'; dosage_route ({code: '', display_names: [...]}) e.g. oral/IV/IM/topical, whenever the route is stated (even just 'by mouth' or 'IM'); dosage_site ({code: '', display_names: [...]}) body site, e.g. for injections ('into the left arm', 'gluteal region'); dosage_method ({code: '', display_names: [...]}) e.g. swallow/inject/apply/inhale; authored_on (ISO datetime, only if the clinician gave an explicit prescribing date/time, e.g. 'starting Monday' — never fabricate, null defaults to now)",
   service_request:
