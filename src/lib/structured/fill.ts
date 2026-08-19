@@ -10,8 +10,8 @@ import {
 import { normalizeSnomedInfo } from "./deserializers";
 import {
   STRUCTURED_TEMPLATE_DESCRIPTIONS,
+  STRUCTURED_TEMPLATE_EXAMPLES,
   type StructuredFillContext,
-  buildStructuredTemplateExamples,
   deserializeStructuredData,
 } from "./index";
 import {
@@ -749,6 +749,18 @@ export async function collectFieldsToFill(
       structuredValue: hasNewItems ? nextArr : undefined,
     });
 
+    if (errors.length) {
+      fieldsToFill.push({
+        qId: candidate.qId,
+        questionType: candidate.questionType,
+        label: candidate.questionText,
+        structuredType: candidate.structuredType,
+        matchedValue: null,
+        matchedNote: null,
+        error: errors.join("; "),
+      });
+    }
+
     if (candidate.structuredType === "service_request") {
       const otherLabel = findOtherInvestigationLabel(data);
       const directOtherValue = otherLabel
@@ -888,8 +900,6 @@ export function getStructuredFieldDescription(
   label: string,
 ): string {
   const base = `"${label}" (${STRUCTURED_TEMPLATE_DESCRIPTIONS[structuredType]})`;
-  // Date-bearing types get the shared date contract: the model resolves
-  // relative time phrases itself, but only against the real, current date.
   if (!DATE_BEARING_STRUCTURED_TYPES.has(structuredType)) return base;
   return `${base}. ${buildDateContext()}`;
 }
@@ -897,5 +907,5 @@ export function getStructuredFieldDescription(
 export function getStructuredFieldExample(
   structuredType: SupportedStructuredType,
 ): unknown {
-  return buildStructuredTemplateExamples()[structuredType];
+  return STRUCTURED_TEMPLATE_EXAMPLES[structuredType];
 }

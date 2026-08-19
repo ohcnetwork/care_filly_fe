@@ -29,218 +29,209 @@ const SNOMED_INFO_EXAMPLE = {
   display_names: ["Fever", "Fever (finding)"],
 };
 
-/**
- * Built per call, not at module import: the onset example dates must stay
- * consistent with the "today" anchor injected into date-bearing field
- * descriptions (see date-contract.ts), even for long-lived tabs.
- */
-export function buildStructuredTemplateExamples(): Record<
+export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
   SupportedStructuredType,
   unknown
-> {
-  return {
-    symptom: [
-      {
-        snomed_info: SNOMED_INFO_EXAMPLE,
-        clinical_status: "active",
-        verification_status: "confirmed",
-        severity: "moderate",
-        onset_datetime: onsetExampleDate(14),
-        note: "for the past two weeks",
+> = {
+  symptom: [
+    {
+      snomed_info: SNOMED_INFO_EXAMPLE,
+      clinical_status: "active",
+      verification_status: "confirmed",
+      severity: "moderate",
+      onset_datetime: onsetExampleDate(14),
+      note: "for the past two weeks",
+    },
+  ],
+  diagnosis: [
+    {
+      snomed_info: SNOMED_INFO_EXAMPLE,
+      clinical_status: "active",
+      verification_status: "confirmed",
+      severity: "moderate",
+      onset_datetime: onsetExampleDate(14),
+      note: "for the past two weeks",
+    },
+  ],
+  allergy_intolerance: [
+    {
+      snomed_info: {
+        code: "",
+        display_names: ["citrus fruit", "bitter orange"],
       },
-    ],
-    diagnosis: [
-      {
-        snomed_info: SNOMED_INFO_EXAMPLE,
-        clinical_status: "active",
-        verification_status: "confirmed",
-        severity: "moderate",
-        onset_datetime: onsetExampleDate(14),
-        note: "for the past two weeks",
+      clinical_status: "active",
+      category: "food",
+      criticality: "low",
+      verification_status: "confirmed",
+      last_occurrence: onsetExampleDate(14),
+      note: null,
+    },
+  ],
+  medication_statement: [
+    {
+      medication: {
+        code: "376771007",
+        display_names: ["Zinc 25 mg oral capsule"],
       },
-    ],
-    allergy_intolerance: [
-      {
-        snomed_info: {
-          code: "418085001",
-          display_names: ["citrus fruit", "bitter orange"],
-        },
-        clinical_status: "active",
-        category: "food",
-        criticality: "low",
-        verification_status: "confirmed",
-        last_occurrence: null,
-        note: null,
+      dosage_instructions: "Take 1 tablet daily",
+      information_source: "patient",
+      take_from: null,
+      take_until: null,
+      reason: null,
+      note: null,
+    },
+  ],
+  medication_request: [
+    {
+      medicine: {
+        code: "",
+        display_names: ["Dolo 650", "Paracetamol 650 mg oral tablet"],
       },
-    ],
-    medication_statement: [
-      {
-        medication: {
-          code: "376771007",
-          display_names: ["Zinc 25 mg oral capsule"],
-        },
-        dosage_instructions: "Take 1 tablet daily",
-        information_source: "patient",
-        take_from: null,
-        take_until: null,
-        reason: null,
-        note: null,
+      intent: "order",
+      category: "outpatient",
+      priority: "routine",
+      dosage_frequency: "QD",
+      dosage_duration: { value: 5, unit: "d" },
+      dosage_dose_and_rate: {
+        type: "ordered",
+        dose_quantity: { value: 1, unit: "Tablet" },
       },
-    ],
-    medication_request: [
-      {
-        medicine: {
-          code: "",
-          display_names: ["Dolo 650", "Paracetamol 650 mg oral tablet"],
-        },
-        intent: "order",
-        category: "outpatient",
-        priority: "routine",
-        dosage_frequency: "QD",
-        dosage_duration: { value: 5, unit: "d" },
-        dosage_dose_and_rate: {
-          type: "ordered",
-          dose_quantity: { value: 1, unit: "Tablet" },
-        },
-        dosage_additional_instruction: {
-          code: "",
-          display_names: ["Take with food"],
-        },
-        dosage_as_needed_for: null,
-        dosage_route: { code: "", display_names: ["Oral"] },
-        dosage_site: null,
-        dosage_method: null,
-        authored_on: null,
-        note: null,
+
+      dosage_additional_instruction: {
+        code: "",
+        display_names: ["Take with food"],
       },
-      {
-        medicine: {
-          code: "",
-          display_names: [
-            "Pantoprazole 40mg",
-            "Pantoprazole 40 mg oral tablet",
-          ],
-        },
-        intent: "order",
-        category: "outpatient",
-        priority: "routine",
-        dosage_frequency: "1-0-0",
-        dosage_duration: { value: 7, unit: "d" },
-        dosage_dose_and_rate: {
-          type: "ordered",
-          dose_quantity: { value: 1, unit: "Tablet" },
-        },
-        dosage_additional_instruction: null,
-        dosage_as_needed_for: { code: "", display_names: ["Nausea"] },
-        dosage_route: { code: "", display_names: ["Oral"] },
-        dosage_site: null,
-        dosage_method: null,
-        authored_on: null,
-        note: null,
+      dosage_as_needed_for: null,
+      dosage_route: { code: "", display_names: ["Oral"] },
+      dosage_site: null,
+      dosage_method: null,
+      authored_on: null,
+      note: null,
+    },
+    {
+      medicine: {
+        code: "",
+        display_names: ["Pantoprazole 40mg", "Pantoprazole 40 mg oral tablet"],
       },
-      {
-        // Route/site/method example: "Give ceftriaxone 1 gram IM into the
-        // left gluteal region, once daily for 5 days".
-        medicine: {
-          code: "",
-          display_names: ["Ceftriaxone 1g injection"],
-        },
-        intent: "order",
-        category: "inpatient",
-        priority: "routine",
-        dosage_frequency: "QD",
-        dosage_duration: { value: 5, unit: "d" },
-        dosage_dose_and_rate: {
-          type: "ordered",
-          dose_quantity: { value: 1, unit: "g" },
-        },
-        dosage_additional_instruction: null,
-        dosage_as_needed_for: null,
-        dosage_route: { code: "", display_names: ["Intramuscular"] },
-        dosage_site: { code: "", display_names: ["Gluteal region"] },
-        dosage_method: { code: "", display_names: ["Injection"] },
-        authored_on: null,
-        note: null,
+      intent: "order",
+      category: "outpatient",
+      priority: "routine",
+      dosage_frequency: "1-0-0",
+      dosage_duration: { value: 7, unit: "d" },
+      dosage_dose_and_rate: {
+        type: "ordered",
+        dose_quantity: { value: 1, unit: "Tablet" },
       },
-      {
-        // Taper/step regimen example: "1 tablet daily for 2 weeks, then 2
-        // tablets daily for 4 weeks" — use dosage_phases instead of the flat
-        // dosage_frequency/dosage_duration/dosage_dose_and_rate fields.
-        medicine: {
-          code: "",
-          display_names: ["Dolo 650", "Paracetamol 650 mg oral tablet"],
-        },
-        intent: "order",
-        category: "outpatient",
-        priority: "routine",
-        dosage_phases: [
-          {
-            dosage_frequency: "QD",
-            dosage_duration: { value: 2, unit: "wk" },
-            dosage_dose_and_rate: {
-              type: "ordered",
-              dose_quantity: { value: 1, unit: "Tablet" },
-            },
+      dosage_additional_instruction: null,
+      dosage_as_needed_for: { code: "", display_names: ["Nausea"] },
+      dosage_route: { code: "", display_names: ["Oral"] },
+      dosage_site: null,
+      dosage_method: null,
+      authored_on: null,
+      note: null,
+    },
+    {
+      // Route/site/method example: "Give ceftriaxone 1 gram IM into the
+      // left gluteal region, once daily for 5 days".
+      medicine: {
+        code: "",
+        display_names: ["Ceftriaxone 1g injection"],
+      },
+      intent: "order",
+      category: "inpatient",
+      priority: "routine",
+      dosage_frequency: "QD",
+      dosage_duration: { value: 5, unit: "d" },
+      dosage_dose_and_rate: {
+        type: "ordered",
+        dose_quantity: { value: 1, unit: "g" },
+      },
+      dosage_additional_instruction: null,
+      dosage_as_needed_for: null,
+      dosage_route: { code: "", display_names: ["Intramuscular"] },
+      dosage_site: { code: "", display_names: ["Gluteal region"] },
+      dosage_method: { code: "", display_names: ["Injection"] },
+      authored_on: null,
+      note: null,
+    },
+    {
+      // Taper/step regimen example: "1 tablet daily for 2 weeks, then 2
+      // tablets daily for 4 weeks" — use dosage_phases instead of the flat
+      // dosage_frequency/dosage_duration/dosage_dose_and_rate fields.
+      medicine: {
+        code: "",
+        display_names: ["Dolo 650", "Paracetamol 650 mg oral tablet"],
+      },
+      intent: "order",
+      category: "outpatient",
+      priority: "routine",
+      dosage_phases: [
+        {
+          dosage_frequency: "QD",
+          dosage_duration: { value: 2, unit: "wk" },
+          dosage_dose_and_rate: {
+            type: "ordered",
+            dose_quantity: { value: 1, unit: "Tablet" },
           },
-          {
-            dosage_frequency: "QD",
-            dosage_duration: { value: 4, unit: "wk" },
-            dosage_dose_and_rate: {
-              type: "ordered",
-              dose_quantity: { value: 2, unit: "Tablet" },
-            },
+        },
+        {
+          dosage_frequency: "QD",
+          dosage_duration: { value: 4, unit: "wk" },
+          dosage_dose_and_rate: {
+            type: "ordered",
+            dose_quantity: { value: 2, unit: "Tablet" },
           },
-        ],
-        dosage_additional_instruction: null,
-        dosage_as_needed_for: null,
-        dosage_route: null,
-        dosage_site: null,
-        dosage_method: null,
-        authored_on: null,
-        note: null,
-      },
-    ],
-    service_request: [
-      {
-        activity_definition: {
-          title: "Lipid Panel",
-          display_names: ["Lipid Panel", "lipid profile"],
         },
-        intent: "order",
-        priority: "routine",
-        body_site: null,
-        patient_instruction: null,
-        note: null,
+      ],
+      dosage_additional_instruction: null,
+      dosage_as_needed_for: null,
+      dosage_route: null,
+      dosage_site: null,
+      dosage_method: null,
+      authored_on: null,
+      note: null,
+    },
+  ],
+  service_request: [
+    {
+      activity_definition: {
+        title: "Lipid Panel",
+        display_names: ["Lipid Panel", "lipid profile"],
       },
-      {
-        activity_definition: {
-          title: "Complete Blood Count",
-          display_names: ["CBC", "Complete Blood Count"],
-        },
-        intent: "order",
-        priority: "asap",
-        body_site: null,
-        patient_instruction:
-          "Fast (no food or drink) for 12 hours before the test",
-        note: null,
+      intent: "order",
+      priority: "routine",
+      body_site: null,
+      patient_instruction: null,
+      note: null,
+    },
+    {
+      activity_definition: {
+        title: "Complete Blood Count",
+        display_names: ["CBC", "Complete Blood Count"],
       },
-    ],
-    time_of_death: "2026-08-18T15:45:00.000Z",
-  };
-}
+      intent: "order",
+      priority: "asap",
+      body_site: null,
+      patient_instruction:
+        "Fast (no food or drink) for 12 hours before the test",
+      note: null,
+    },
+  ],
+  time_of_death: "2026-08-18T15:45:00.000Z",
+};
 
 export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
   SupportedStructuredType,
   string
 > = {
   symptom:
-    "array of symptoms; snomed_info required; onset_datetime as date only YYYY-MM-DD, resolved from the spoken timing per the date rules at the end of this description; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date",
+    "array of symptoms; snomed_info required; onset_datetime as date only YYYY-MM-DD (if patient says '2 weeks ago', subtract from today; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
   diagnosis:
-    "array of diagnoses; snomed_info required; onset_datetime as date only YYYY-MM-DD, resolved from the spoken timing per the date rules at the end of this description; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date",
+    "array of diagnoses; snomed_info required; onset_datetime as date only YYYY-MM-DD (compute from relative phrases like '3 days ago'; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
   allergy_intolerance:
-    "array of allergies/intolerances; snomed_info from substance hierarchy; if the patient mentions when they last had a reaction or exposure (e.g. 'previous Sunday', '2 weeks ago', 'in January'), compute last_occurrence as date only YYYY-MM-DD per the date rules at the end of this description; if no occurrence timing is mentioned, leave last_occurrence as null — do NOT guess or fabricate a date",
+    "array of allergies/intolerances; snomed_info from substance hierarchy (code must always be left as an empty string); criticality is exactly one of low | high | unable_to_assess (map 'mild'/'moderate' to low, 'severe'/'anaphylaxis' to high, use unable_to_assess if not stated or unclear — never use any other word); last_occurrence is the date (YYYY-MM-DD) of the most recent reaction, only if explicitly mentioned (e.g. 'last reaction was 2 weeks ago', 'happened last month', since 2020) — compute relative phrases from today's date, omit entirely if not mentioned, never guess",
   medication_statement:
-    "array of medications the patient is currently taking (not new prescriptions); take_from/take_until as YYYY-MM-DD resolved from spoken timing per the date rules at the end of this description (take_until may be after today, e.g. 'continue for 2 more weeks'); null when not mentioned",
+    "array of medications the patient is currently taking (not new prescriptions)",
   medication_request:
     "array of NEW prescriptions; ONLY include a medicine if the clinician explicitly said they are prescribing/starting it by name — never invent, infer, suggest, or auto-prescribe a medication that was not explicitly stated, even if it would be a routine/likely choice for the diagnosis; if no medication was explicitly prescribed, return an empty array []; medicine.display_names must include brand + strength (e.g. Dolo 650, Pantoprazole 40mg); always include dosage_frequency (QD, BID, 1-0-1, etc.) and dosage_duration when stated; for a taper/step regimen where the dose or frequency explicitly changes partway through (e.g. '1 tablet daily for 2 weeks, then 2 tablets daily for 4 weeks'), use dosage_phases (an array of {dosage_frequency, dosage_duration, dosage_dose_and_rate}) instead of the flat fields — one entry per phase, in the order stated; omit dosage_phases entirely for an ordinary single-phase prescription. ALWAYS include these six keys on every item, set to null when not mentioned — never just drop the key: dosage_additional_instruction ({code: '', display_names: [...]}) — capture this whenever the clinician gives an instruction like 'take with food', 'avoid alcohol', 'on an empty stomach', it's easy to miss but very common, do not leave it null when one was said; dosage_as_needed_for ({code: '', display_names: [...]}) for a PRN reason like 'as needed for pain'; dosage_route ({code: '', display_names: [...]}) e.g. oral/IV/IM/topical, whenever the route is stated (even just 'by mouth' or 'IM'); dosage_site ({code: '', display_names: [...]}) body site, e.g. for injections ('into the left arm', 'gluteal region'); dosage_method ({code: '', display_names: [...]}) e.g. swallow/inject/apply/inhale; authored_on (ISO datetime, only if the clinician gave an explicit prescribing date/time, e.g. 'starting Monday' — never fabricate, null defaults to now)",
   service_request:

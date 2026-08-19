@@ -80,6 +80,26 @@ function formatDisplayNames(names: string[]): string {
   return names.length ? names.join(", ") : "unknown term";
 }
 
+const ALLERGY_CRITICALITY_SYNONYMS: Record<string, "low" | "high"> = {
+  mild: "low",
+  moderate: "low",
+  severe: "high",
+  anaphylaxis: "high",
+  anaphylactic: "high",
+};
+
+function normalizeCriticality(
+  value: unknown,
+): "low" | "high" | "unable_to_assess" {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  if (normalized === "low" || normalized === "high") return normalized;
+  return ALLERGY_CRITICALITY_SYNONYMS[normalized] ?? "unable_to_assess";
+}
+
 async function resolveFindingCode(
   snomed: SnomedInfo,
   valueSetSlug: string,
@@ -139,6 +159,9 @@ export async function deserializeSymptoms(
           note: noNullStrings(row.note as string),
         };
       } catch (err) {
+        errors.push(
+          `Failed to parse symptom: ${err instanceof Error ? err.message : "unknown error"}`,
+        );
         return undefined;
       }
     }),
@@ -246,20 +269,21 @@ export async function deserializeAllergies(
           return undefined;
         }
 
-        // The model computes the date, guided by the date contract in the
-        // field description; resolveLastOccurrence re-derives relative
-        // phrases and rejects implausible absolutes rather than saving them.
         const lastOccurrence = resolveLastOccurrence(row);
+        if (!lastOccurrence) {
+          errors.push(
+            `Last occurrence date not filled. Please enter manually if known.`,
+          );
+        }
+
         return {
           code,
           clinical_status: (row.clinical_status as string) || "active",
           category: (row.category as string) || "environment",
-          criticality: (row.criticality as string) || "low",
+          criticality: normalizeCriticality(row.criticality),
           verification_status:
             (row.verification_status as string) || "confirmed",
-          last_occurrence: lastOccurrence
-            ? shiftUTCToLocalClockTime(lastOccurrence)
-            : undefined,
+          last_occurrence: lastOccurrence,
           note: noNullStrings(row.note as string),
         };
       } catch (err) {
