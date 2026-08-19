@@ -475,11 +475,8 @@ const MAN_FREQUENCY_MAP: Record<
   "0-1-0": "NOON",
 };
 
-// Reverse of MAN_FREQUENCY_MAP: the canonical morning-noon-night pattern for a
-// timing key. Used as the dosage instruction's `text` so care_fe's display can
-// distinguish the variants that share a FHIR code — e.g. BID_NOON_NIGHT and
-// BID_MORNING_NOON both carry code "BID", and without the "0-1-1"/"1-1-0" text
-// care_fe falls back to the first "BID" preset (1-0-1) and shows the wrong slots.
+// Reverse of MAN_FREQUENCY_MAP — the M-A-N pattern for a timing key, used to
+// disambiguate variants that share a FHIR code (e.g. BID vs BID_MORNING_NOON).
 const TIMING_KEY_TO_MAN: Record<string, string> = Object.fromEntries(
   Object.entries(MAN_FREQUENCY_MAP).map(([pattern, key]) => [key, pattern]),
 );
@@ -581,8 +578,7 @@ export interface ResolvedDosageFrequency {
   text?: string;
 }
 
-// Resolve a phrase to a timing-option KEY (not the option itself) so the caller
-// can also look up its canonical M-A-N pattern for `text`.
+// Resolves a phrase to its timing-option key so the caller can also look up TIMING_KEY_TO_MAN.
 function resolveTimingKey(normalized: string): string | null {
   const aliasKey = FREQUENCY_ALIASES[normalized];
   if (aliasKey) return aliasKey;
@@ -625,9 +621,7 @@ export function resolveDosageFrequency(
   const key = resolveTimingKey(normalized);
   if (!key) return { timingOption: null };
 
-  // Attach the canonical M-A-N pattern as `text` when the key has one, so
-  // display-only code collisions (BID / TID variants) resolve to the right
-  // slots downstream. Codes without a pattern (QD, Q6H, WK…) keep text unset.
+  // `text` disambiguates code collisions like BID vs BID_MORNING_NOON downstream.
   return {
     timingOption: MEDICATION_REQUEST_TIMING_OPTIONS[key],
     text: TIMING_KEY_TO_MAN[key],

@@ -193,28 +193,24 @@ export function parseStructuredRaw(raw: unknown): unknown[] | null {
     const trimmed = raw.trim();
     if (!trimmed) return null;
 
-    // Models occasionally prefix/wrap the JSON payload with junk — a stray
-    // leading colon (`:[{...}]`, echoing the `medication:` field label), a
-    // ```json code fence, etc. Start from the first bracket and only trust
-    // that slice if it actually parses; otherwise fall back to treating the
-    // whole string as a single free-text answer (or bailing).
-    const start = trimmed.search(/[[{]/);
-    const candidate = start > 0 ? trimmed.slice(start) : trimmed;
+    // Models sometimes wrap the JSON in junk — a stray leading colon or a
+    // ```json fence — so slice from the first bracket and drop a trailing fence.
+    const bracketIndex = trimmed.search(/[[{]/);
+    if (bracketIndex === -1) return [trimmed];
 
-    if (!/^[[{]/.test(candidate)) return [trimmed];
+    const sliced = bracketIndex > 0 ? trimmed.slice(bracketIndex) : trimmed;
+    const candidate = sliced.replace(/```\s*$/, "").trimEnd();
+    const hasJunk = candidate !== trimmed;
 
     let result = tryParseJSON(candidate);
     if (result === undefined) {
-      // Some models over-escape a JSON-string field, embedding literal
-      // backslash-quotes in the value itself (e.g. `[{\"code\":...}]`)
-      // instead of returning plain JSON text. Unescaping once recovers it;
-      // if that still doesn't parse, this really isn't structured data.
+      // Some models over-escape JSON strings (`[{\"code\":...}]`); unescape once.
       result = tryParseJSON(candidate.replace(/\\"/g, '"'));
     }
     if (result === undefined) {
-      // The leading text wasn't junk after all (the slice didn't parse):
-      // keep the original bracket-start bail, else it's plain free text.
-      return /^[[{]/.test(trimmed) ? null : [trimmed];
+      // No junk stripped means this was just malformed JSON — bail; otherwise
+      // treat the original string as plain free text.
+      return hasJunk ? [trimmed] : null;
     }
     parsed = result;
   }
