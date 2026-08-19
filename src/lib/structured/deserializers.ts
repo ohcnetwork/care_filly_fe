@@ -76,7 +76,7 @@ export function normalizeSnomedInfo(
   return null;
 }
 
-function formatDisplayNames(names: string[]): string {
+export function formatDisplayNames(names: string[]): string {
   return names.length ? names.join(", ") : "unknown term";
 }
 
