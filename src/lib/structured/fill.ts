@@ -189,17 +189,29 @@ export function parseStructuredRaw(raw: unknown): unknown[] | null {
     const trimmed = raw.trim();
     if (!trimmed) return null;
 
-    if (!/^[[{]/.test(trimmed)) return [trimmed];
+    // Models occasionally prefix/wrap the JSON payload with junk — a stray
+    // leading colon (`:[{...}]`, echoing the `medication:` field label), a
+    // ```json code fence, etc. Start from the first bracket and only trust
+    // that slice if it actually parses; otherwise fall back to treating the
+    // whole string as a single free-text answer (or bailing).
+    const start = trimmed.search(/[[{]/);
+    const candidate = start > 0 ? trimmed.slice(start) : trimmed;
 
-    let result = tryParseJSON(trimmed);
+    if (!/^[[{]/.test(candidate)) return [trimmed];
+
+    let result = tryParseJSON(candidate);
     if (result === undefined) {
       // Some models over-escape a JSON-string field, embedding literal
       // backslash-quotes in the value itself (e.g. `[{\"code\":...}]`)
       // instead of returning plain JSON text. Unescaping once recovers it;
       // if that still doesn't parse, this really isn't structured data.
-      result = tryParseJSON(trimmed.replace(/\\"/g, '"'));
+      result = tryParseJSON(candidate.replace(/\\"/g, '"'));
     }
-    if (result === undefined) return null;
+    if (result === undefined) {
+      // The leading text wasn't junk after all (the slice didn't parse):
+      // keep the original bracket-start bail, else it's plain free text.
+      return /^[[{]/.test(trimmed) ? null : [trimmed];
+    }
     parsed = result;
   }
 

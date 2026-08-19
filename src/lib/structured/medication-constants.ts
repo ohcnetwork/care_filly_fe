@@ -475,6 +475,29 @@ const MAN_FREQUENCY_MAP: Record<
   "0-1-0": "NOON",
 };
 
+// Reverse of MAN_FREQUENCY_MAP: the canonical morning-noon-night pattern for a
+// timing key. Used as the dosage instruction's `text` so care_fe's display can
+// distinguish the variants that share a FHIR code — e.g. BID_NOON_NIGHT and
+// BID_MORNING_NOON both carry code "BID", and without the "0-1-1"/"1-1-0" text
+// care_fe falls back to the first "BID" preset (1-0-1) and shows the wrong slots.
+const TIMING_KEY_TO_MAN: Record<string, string> = Object.fromEntries(
+  Object.entries(MAN_FREQUENCY_MAP).map(([pattern, key]) => [key, pattern]),
+);
+
+// Comma-separated list of every accepted dosage_frequency label, taken
+// straight from each option's `display` so the LLM prompt can never drift from
+// what the resolver accepts. Each label carries the code and the
+// morning-noon-night pattern (e.g. "BID (1-1-0)"), and resolveDosageFrequency
+// matches the full label — so the model can copy one verbatim. Deduped because
+// a couple of variants share a display (e.g. TID (1-1-1)).
+export const DOSAGE_FREQUENCY_REFERENCE: string = [
+  ...new Set(
+    Object.values(MEDICATION_REQUEST_TIMING_OPTIONS).map(
+      (option) => option.display,
+    ),
+  ),
+].join(", ");
+
 const MAN_PATTERN = /^[\d]+(?:\/[\d]+)?(-[\d]+(?:\/[\d]+)?){1,3}$/;
 
 const FREQUENCY_ALIASES: Record<
@@ -572,6 +595,24 @@ export interface ResolvedDosageFrequency {
   text?: string;
 }
 
+// Resolve a phrase to a timing-option KEY (not the option itself) so the caller
+// can also look up its canonical M-A-N pattern for `text`.
+function resolveTimingKey(normalized: string): string | null {
+  const aliasKey = FREQUENCY_ALIASES[normalized];
+  if (aliasKey) return aliasKey;
+
+  const entry = Object.entries(MEDICATION_REQUEST_TIMING_OPTIONS).find(
+    ([, option]) =>
+      option.display.toLowerCase() === normalized ||
+      option.display.toLowerCase().includes(normalized) ||
+      normalized.includes(option.timing.code.display.toLowerCase()) ||
+      option.timing.code.display.toLowerCase() === normalized ||
+      option.timing.code.code.toLowerCase() === normalized,
+  );
+
+  return entry?.[0] ?? null;
+}
+
 export function resolveDosageFrequency(
   frequency: unknown,
 ): ResolvedDosageFrequency {
@@ -595,21 +636,16 @@ export function resolveDosageFrequency(
     return { timingOption: null };
   }
 
-  const aliasKey = FREQUENCY_ALIASES[normalized];
-  if (aliasKey) {
-    return { timingOption: MEDICATION_REQUEST_TIMING_OPTIONS[aliasKey] };
-  }
+  const key = resolveTimingKey(normalized);
+  if (!key) return { timingOption: null };
 
-  const matched = Object.values(MEDICATION_REQUEST_TIMING_OPTIONS).find(
-    (option) =>
-      option.display.toLowerCase() === normalized ||
-      option.display.toLowerCase().includes(normalized) ||
-      normalized.includes(option.timing.code.display.toLowerCase()) ||
-      option.timing.code.display.toLowerCase() === normalized ||
-      option.timing.code.code.toLowerCase() === normalized,
-  );
-
-  return { timingOption: matched ?? null };
+  // Attach the canonical M-A-N pattern as `text` when the key has one, so
+  // display-only code collisions (BID / TID variants) resolve to the right
+  // slots downstream. Codes without a pattern (QD, Q6H, WK…) keep text unset.
+  return {
+    timingOption: MEDICATION_REQUEST_TIMING_OPTIONS[key],
+    text: TIMING_KEY_TO_MAN[key],
+  };
 }
 
 export function findTimingOption(
