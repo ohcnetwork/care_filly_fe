@@ -103,6 +103,40 @@ export function parseRelativeOnset(
   );
 }
 
+const WEEKDAYS = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+];
+
+export function parseRelativeWeekday(
+  text: string,
+  referenceDate: Date = new Date(),
+): string | null {
+  const match = text
+    .trim()
+    .toLowerCase()
+    .match(
+      /\b(?:(last|this|since)\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/,
+    );
+  if (!match) return null;
+
+  const qualifier = match[1];
+  const targetDow = WEEKDAYS.indexOf(match[2]);
+  const todayDow = referenceDate.getDay();
+
+  let daysAgo = (todayDow - targetDow + 7) % 7;
+  if (qualifier === "last" && daysAgo === 0) daysAgo = 7;
+
+  const result = new Date(referenceDate);
+  result.setDate(result.getDate() - daysAgo);
+  return formatDateQueryString(result);
+}
+
 export interface OnsetResolveOptions {
   referenceDate?: Date;
   complaintText?: string;
@@ -125,10 +159,14 @@ function complaintMentionsFinding(
 
 /**
  * Guard against absolute dates the LLM anchored to the wrong reference (it
- * often assumes its training-cutoff year, e.g. 2023). An onset can never be in
- * the future, and should not predate a reasonable clinical bound.
+ * often assumes its training-cutoff year, e.g. 2023). Onsets and past
+ * occurrences can never be in the future, and should not predate a
+ * reasonable clinical bound.
  */
-function isPlausibleOnset(dateStr: string, referenceDate: Date): boolean {
+function isPlausiblePastDate(
+  dateStr: string,
+  referenceDate: Date = new Date(),
+): boolean {
   const today = formatDateQueryString(referenceDate);
   if (dateStr > today) return false;
 
@@ -171,7 +209,8 @@ export function resolveOnsetDatetime(
   // Fall back to explicit absolute dates, ignoring implausible values.
   for (const candidate of candidates) {
     const dateOnly = validateDate(candidate);
-    if (dateOnly && isPlausibleOnset(dateOnly, referenceDate)) return dateOnly;
+    if (dateOnly && isPlausiblePastDate(dateOnly, referenceDate))
+      return dateOnly;
   }
 
   const duration = row.onset_duration as
@@ -194,6 +233,26 @@ export function resolveOnsetDatetime(
   }
 
   return formatDateQueryString(referenceDate);
+}
+
+/* Resolves an allergy/intolerance's last occurrence date */
+export function resolveLastOccurrence(
+  row: Record<string, unknown>,
+  referenceDate: Date = new Date(),
+): string | null {
+  const candidate = row.last_occurrence;
+  if (typeof candidate !== "string") return null;
+
+  const relative = parseRelativeOnset(candidate, referenceDate);
+  if (relative) return relative;
+
+  const match = candidate.trim().match(/^(\d{4}-\d{2}-\d{2})(?:[T\s]|$)/);
+  if (!match) return null;
+
+  const dateOnly = match[1];
+  if (isPlausiblePastDate(dateOnly, referenceDate)) return dateOnly;
+
+  return null;
 }
 
 export function validateTime(input: string | null | undefined): string | null {

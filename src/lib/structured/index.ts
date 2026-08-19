@@ -56,14 +56,14 @@ export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
   allergy_intolerance: [
     {
       snomed_info: {
-        code: "418085001",
+        code: "",
         display_names: ["citrus fruit", "bitter orange"],
       },
       clinical_status: "active",
       category: "food",
       criticality: "low",
       verification_status: "confirmed",
-      last_occurrence: null,
+      last_occurrence: onsetExampleDate(14),
       note: null,
     },
   ],
@@ -232,7 +232,7 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
   diagnosis:
     "array of diagnoses; snomed_info required; onset_datetime as date only YYYY-MM-DD (compute from relative phrases like '3 days ago'; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
   allergy_intolerance:
-    "array of allergies/intolerances; snomed_info from substance hierarchy",
+    "array of allergies/intolerances; snomed_info from substance hierarchy (code must always be left as an empty string); criticality is exactly one of low | high | unable_to_assess (map 'mild'/'moderate' to low, 'severe'/'anaphylaxis' to high, use unable_to_assess if not stated or unclear — never use any other word); last_occurrence is the date (YYYY-MM-DD) of the most recent reaction, only if explicitly mentioned (e.g. 'last reaction was 2 weeks ago', 'happened last month', since 2020) — compute relative phrases from today's date, omit entirely if not mentioned, never guess",
   medication_statement:
     "array of medications the patient is currently taking (not new prescriptions)",
   medication_request:
