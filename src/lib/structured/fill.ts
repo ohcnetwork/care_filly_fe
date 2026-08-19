@@ -7,7 +7,7 @@ import {
   DATE_BEARING_STRUCTURED_TYPES,
   buildDateContext,
 } from "./date-contract";
-import { normalizeSnomedInfo } from "./deserializers";
+import { formatDisplayNames, normalizeSnomedInfo } from "./deserializers";
 import {
   STRUCTURED_TEMPLATE_DESCRIPTIONS,
   STRUCTURED_TEMPLATE_EXAMPLES,
@@ -808,7 +808,18 @@ export async function collectFieldsToFill(
   );
 
   for (const result of choiceCodingResults) {
-    if (!result?.code) continue;
+    if (!result) continue;
+    if (!result.code) {
+      fieldsToFill.push({
+        qId: result.candidate.qId,
+        questionType: result.candidate.questionType,
+        label: result.candidate.questionText,
+        matchedValue: null,
+        matchedNote: result.candidate.matchedNote,
+        error: `Could not find a "${result.candidate.questionText}" matching "${formatDisplayNames(result.candidate.displayNames)}". Please enter manually.`,
+      });
+      continue;
+    }
     fieldsToFill.push({
       qId: result.candidate.qId,
       questionType: result.candidate.questionType,
