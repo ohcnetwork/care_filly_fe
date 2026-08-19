@@ -186,6 +186,32 @@ export async function commitMedispeakSession(
   });
 }
 
+/**
+ * Submit a corrected transcript and re-run structuring against it — fixes an
+ * ASR mistake without re-recording. Never re-transcribes audio: only the
+ * session's transcript text changes, and only after that succeeds does
+ * Medispeak restructure every declared output from it. Only valid once the
+ * session has already reached a terminal status (`completed`/`partial`/
+ * `failed`); the caller should poll the result afterwards exactly as it does
+ * after `commitMedispeakSession`.
+ */
+export async function updateMedispeakTranscript(
+  handle: MedispeakSessionHandle,
+  text: string,
+): Promise<void> {
+  await withTokenRefresh(handle, async (token) => {
+    await medispeakFetch(
+      `/scribe_sessions/${handle.medispeakSessionId}/transcript`,
+      token,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      },
+    );
+  });
+}
+
 const TERMINAL_STATUSES = new Set(["completed", "partial", "failed"]);
 
 /** Poll until the session reaches a terminal status, mapping the result. But show transcript updates as they arrive. */

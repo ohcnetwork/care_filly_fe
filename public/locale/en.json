@@ -44,5 +44,10 @@
   "transcript": "Transcript",
   "view": "View",
   "no_matching_fields": "No matching fields found",
-  "filly_is_resolving_fields": "filly is resolving fields.."
+  "filly_is_resolving_fields": "filly is resolving fields..",
+  "edit": "Edit",
+  "edit_transcript": "Edit transcript",
+  "cancel": "Cancel",
+  "save_and_reprocess": "Save & reprocess",
+  "reprocessing_transcript": "Reprocessing…"
 }

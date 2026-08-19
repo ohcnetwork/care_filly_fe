@@ -6,6 +6,7 @@ import {
   Loader2,
   Mic,
   Pause,
+  Pencil,
   Play,
   Settings2,
   Sparkles,
@@ -358,6 +359,9 @@ function FillyControllerInner({
   // reaches here even though Medispeak's raw output had something for it.
   const [appliedFields, setAppliedFields] = useState<FieldFill[]>([]);
   const [isResolvingFields, setIsResolvingFields] = useState(false);
+  const [isEditingTranscript, setIsEditingTranscript] = useState(false);
+  const [editedTranscript, setEditedTranscript] = useState("");
+  const [isReprocessing, setIsReprocessing] = useState(false);
 
   // The user's own filly opt-in from the profile page.
   const preference = useFillyPreference();
@@ -572,6 +576,22 @@ function FillyControllerInner({
     await filly.reset();
     setExpanded(false);
     setTranscriptMinimized(false);
+  };
+
+  const handleReprocessTranscript = async () => {
+    const text = editedTranscript.trim();
+    if (!text) return;
+    clearFillTimeouts();
+    appliedRef.current = false;
+    setFilledCount(0);
+    setAppliedFields([]);
+    setIsEditingTranscript(false);
+    setIsReprocessing(true);
+    try {
+      await filly.reprocessTranscript(text);
+    } finally {
+      setIsReprocessing(false);
+    }
   };
 
   useEffect(() => clearFillTimeouts, [clearFillTimeouts]);
@@ -925,12 +945,59 @@ function FillyControllerInner({
         <div className="max-h-60 overflow-y-auto p-3">
           {filly.result?.transcript && (
             <div className="mb-3">
-              <span className="text-[10px] font-medium text-gray-400 uppercase">
-                {t("transcript")}
-              </span>
-              <p className="mt-1 text-xs leading-relaxed text-gray-600">
-                {filly.result.transcript}
-              </p>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-medium text-gray-400 uppercase">
+                  {t("transcript")}
+                </span>
+                {!isEditingTranscript && !isReprocessing && (
+                  <button
+                    onClick={() => {
+                      setEditedTranscript(filly.result?.transcript ?? "");
+                      setIsEditingTranscript(true);
+                    }}
+                    className="flex items-center gap-1 text-[10px] font-medium text-primary-600 hover:text-primary-800"
+                    title={t("edit_transcript")}
+                  >
+                    <Pencil className="h-2.5 w-2.5" />
+                    {t("edit")}
+                  </button>
+                )}
+              </div>
+
+              {isEditingTranscript ? (
+                <div className="mt-1">
+                  <textarea
+                    value={editedTranscript}
+                    onChange={(e) => setEditedTranscript(e.target.value)}
+                    rows={4}
+                    className="w-full rounded-md border border-gray-200 p-1.5 text-xs leading-relaxed text-gray-700 focus:border-primary-400 focus:ring-0 focus:outline-none"
+                  />
+                  <div className="mt-1.5 flex justify-end gap-1.5">
+                    <button
+                      onClick={() => setIsEditingTranscript(false)}
+                      className="rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 hover:bg-gray-100"
+                    >
+                      {t("cancel")}
+                    </button>
+                    <button
+                      onClick={handleReprocessTranscript}
+                      disabled={!editedTranscript.trim()}
+                      className="rounded-md bg-primary-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+                    >
+                      {t("save_and_reprocess")}
+                    </button>
+                  </div>
+                </div>
+              ) : isReprocessing ? (
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {t("reprocessing_transcript")}
+                </div>
+              ) : (
+                <p className="mt-1 text-xs leading-relaxed text-gray-600">
+                  {filly.result.transcript}
+                </p>
+              )}
             </div>
           )}
 

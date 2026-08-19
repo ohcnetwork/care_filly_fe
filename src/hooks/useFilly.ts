@@ -8,6 +8,7 @@ import {
   commitMedispeakSession,
   createMedispeakSession,
   pollMedispeakResult,
+  updateMedispeakTranscript,
   uploadMedispeakSegment,
 } from "@/lib/medispeak-api";
 import { resolvePreferredMicDeviceId } from "@/lib/mic-preference";
@@ -60,6 +61,13 @@ function describeStopError(err: unknown): string {
   return err instanceof Error ? err.message : "Failed to process recording";
 }
 
+function describeReprocessError(err: unknown): string {
+  if (err instanceof MedispeakApiError && err.code === "insufficient_credit") {
+    return "Not enough credit to reprocess this consultation.";
+  }
+  return err instanceof Error ? err.message : "Failed to reprocess transcript";
+}
+
 /** Segment transcription runs async server-side; re-committing retries
  * exactly the still-pending segments, so this failure alone is recoverable. */
 function isRecommittableFailure(data: MedispeakResult): boolean {
@@ -102,6 +110,9 @@ interface UseFillyReturn {
   stopRecording: () => Promise<void>;
   cancelRecording: () => Promise<void>;
   reset: () => Promise<void>;
+  /** Submit a corrected transcript and re-run structuring from it, without
+   *  re-recording. Only meaningful once a result with a transcript exists. */
+  reprocessTranscript: (text: string) => Promise<void>;
 }
 
 export function useFilly({
@@ -345,6 +356,30 @@ export function useFilly({
     onError,
   ]);
 
+  // Re-runs structuring from an edited transcript, without touching audio.
+  // Reuses the session handle stopRecording already created — reset()/
+  // cancelRecording() are the only paths that clear it, so it survives past
+  // `completed`/`failed` for exactly this purpose.
+  const reprocessTranscript = useCallback(
+    async (text: string) => {
+      const handle = medispeakHandleRef.current;
+      if (!handle) return;
+      try {
+        setError(null);
+        updateStatus("processing");
+        await updateMedispeakTranscript(handle, text);
+        const data = await awaitMedispeakResult(handle);
+        finishWithMedispeakResult(data);
+      } catch (err) {
+        const message = describeReprocessError(err);
+        setError(message);
+        updateStatus("failed");
+        onError?.(err instanceof Error ? err : new Error(message));
+      }
+    },
+    [updateStatus, awaitMedispeakResult, finishWithMedispeakResult, onError],
+  );
+
   const cancelRecording = useCallback(async () => {
     recorderRef.current?.cancel();
     recorderRef.current = null;
@@ -384,5 +419,6 @@ export function useFilly({
     stopRecording,
     cancelRecording,
     reset,
+    reprocessTranscript,
   };
 }
