@@ -273,6 +273,26 @@ function findQuestionById(
   return null;
 }
 
+/** Every enclosing group of `targetId`, outermost first — a nested field with no enable_when of its own still inherits its group's. */
+function findAncestors(
+  questions: unknown[],
+  targetId: string,
+  ancestors: Record<string, unknown>[] = [],
+): Record<string, unknown>[] | null {
+  for (const q of questions) {
+    const question = q as Record<string, unknown>;
+    if (question.id === targetId) return ancestors;
+    if (Array.isArray(question.questions)) {
+      const found = findAncestors(question.questions, targetId, [
+        ...ancestors,
+        question,
+      ]);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 function walkQuestions(
   questions: unknown[],
   visitor: (question: Record<string, unknown>) => void,
@@ -438,9 +458,21 @@ function resolveTriggerValues(
   return getCurrentResponseValues(formState, triggerQId);
 }
 
-/** Mirrors CARE's `is_question_enabled` so a question is never filled with a
- * value its `enable_when` conditions would reject on submit. */
+/** Mirrors CARE's `is_question_enabled`, ANDed with every ancestor group's (a hidden group hides everything nested in it). */
 function isQuestionEnabled(
+  question: Record<string, unknown>,
+  qList: unknown[],
+  formState: unknown,
+  data: Record<string, unknown>,
+): boolean {
+  if (!isQuestionEnabledSelf(question, qList, formState, data)) return false;
+  const ancestors = findAncestors(qList, question.id as string) ?? [];
+  return ancestors.every((ancestor) =>
+    isQuestionEnabledSelf(ancestor, qList, formState, data),
+  );
+}
+
+function isQuestionEnabledSelf(
   question: Record<string, unknown>,
   qList: unknown[],
   formState: unknown,
@@ -459,11 +491,12 @@ function isQuestionEnabled(
     if (!triggerQId) return false;
 
     const triggerQuestion = findQuestionById(qList, triggerQId);
-    const values = resolveTriggerValues(
-      triggerQuestion,
-      triggerQId,
-      formState,
-      data,
+    // A hidden trigger has no real answer — treat it as unanswered.
+    const values = (
+      triggerQuestion &&
+      !isQuestionEnabled(triggerQuestion, qList, formState, data)
+        ? []
+        : resolveTriggerValues(triggerQuestion, triggerQId, formState, data)
     ).map(normalizeEnableWhenValue);
     const expected = normalizeEnableWhenValue(condition.answer);
 
