@@ -6,7 +6,10 @@ import {
   Loader2,
   Mic,
   Pause,
+  Pencil,
   Play,
+  RefreshCw,
+  RotateCcw,
   Settings2,
   Sparkles,
   Square,
@@ -29,7 +32,13 @@ import {
 import type { FillyResult } from "@/lib/types/filly";
 import { cn } from "@/lib/utils";
 
+import { Button } from "@/components/ui/button";
+
 import { useFilly } from "@/hooks/useFilly";
+import {
+  FILLY_LANGUAGE_OPTIONS,
+  useFillyLanguage,
+} from "@/hooks/useFillyLanguage";
 import { useFillyPreference } from "@/hooks/useFillyPreference";
 import { useMicrophoneDevices } from "@/hooks/useMicrophoneDevices";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -350,6 +359,8 @@ function FillyControllerInner({
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
+  const [editingTranscript, setEditingTranscript] = useState(false);
+  const [draftTranscript, setDraftTranscript] = useState("");
   const appliedRef = useRef(false);
   const fillTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [filledCount, setFilledCount] = useState(0);
@@ -365,6 +376,7 @@ function FillyControllerInner({
   const [micMenuOpen, setMicMenuOpen] = useState(false);
   const micMenuRef = useRef<HTMLDivElement>(null);
   const mic = useMicrophoneDevices(micMenuOpen);
+  const fillyLanguage = useFillyLanguage();
 
   useEffect(() => {
     if (!micMenuOpen) return;
@@ -405,6 +417,7 @@ function FillyControllerInner({
         const fieldsToFill = await collectFieldsToFill(
           formState,
           result.structuredData,
+          result.transcript,
         );
 
         if (import.meta.env.DEV) {
@@ -556,7 +569,9 @@ function FillyControllerInner({
     setAppliedFields([]);
     setIsResolvingFields(false);
     setTranscriptMinimized(false);
-    await filly.startRecording();
+    setEditingTranscript(false);
+    setDraftTranscript("");
+    await filly.startRecording({ language: [fillyLanguage.language] });
   };
 
   const handleStart = async () => {
@@ -572,6 +587,34 @@ function FillyControllerInner({
     await filly.reset();
     setExpanded(false);
     setTranscriptMinimized(false);
+    setEditingTranscript(false);
+    setDraftTranscript("");
+  };
+
+  const handleEditTranscript = () => {
+    setDraftTranscript(filly.result?.transcript ?? "");
+    setEditingTranscript(true);
+  };
+
+  const handleCancelEditTranscript = () => {
+    setEditingTranscript(false);
+    setDraftTranscript("");
+  };
+
+  const handleRetryWithCorrectedTranscript = async () => {
+    const corrected = draftTranscript.trim();
+    if (!corrected) return;
+    clearFillTimeouts();
+    appliedRef.current = false;
+    setEditingTranscript(false);
+    await filly.retryStructuring(corrected);
+  };
+
+  const handleReprocess = async () => {
+    clearFillTimeouts();
+    appliedRef.current = false;
+    setEditingTranscript(false);
+    await filly.retryTranscription();
   };
 
   useEffect(() => clearFillTimeouts, [clearFillTimeouts]);
@@ -654,6 +697,43 @@ function FillyControllerInner({
                     );
                   })
                 )}
+              </div>
+              <div className="border-y border-gray-100 px-3 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase bg-linear-to-r from-primary-100 to-transparent">
+                {t("language")}
+              </div>
+              <div className="max-h-48 overflow-y-auto p-1">
+                {FILLY_LANGUAGE_OPTIONS.map((option) => {
+                  const selected = option.code === fillyLanguage.language;
+                  return (
+                    <button
+                      key={option.code}
+                      onClick={() => {
+                        fillyLanguage.selectLanguage(option.code);
+                        setMicMenuOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs",
+                        selected
+                          ? "bg-primary-50 font-medium text-primary-700"
+                          : "text-gray-600 hover:bg-gray-50",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border",
+                          selected
+                            ? "border-primary-600 bg-primary-600"
+                            : "border-gray-300 bg-white",
+                        )}
+                      >
+                        {selected && (
+                          <Check className="h-2.5 w-2.5 text-white" />
+                        )}
+                      </span>
+                      <span className="truncate">{t(option.labelKey)}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -887,125 +967,212 @@ function FillyControllerInner({
 
   // Expanded view — show transcript & results
   return (
-    <div
-      ref={fabDrag.containerRef}
-      className="filly-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6"
-      style={fabDragStyle}
-    >
-      <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
-        <LongPressIndicator progress={fabDrag.longPressProgress} />
-        {/* Header */}
-        <div
-          className="flex items-center justify-between border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-3 py-2.5"
-          onPointerDown={fabDrag.onPointerDown}
-          onClickCapture={fabDrag.onClickCapture}
-          onDoubleClick={fabDrag.resetPosition}
-        >
-          <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-            </span>
-            <span className="text-xs font-semibold text-gray-700">
-              {t("fields_filled", { n: filledCount })}
-            </span>
-          </div>
-          <button
-            onClick={() => {
-              setExpanded(false);
-              setTranscriptMinimized(true);
-            }}
-            className="rounded p-1 text-gray-400 hover:bg-gray-100"
-            title={t("minimize")}
+    <>
+      <div
+        ref={fabDrag.containerRef}
+        className="filly-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6"
+        style={fabDragStyle}
+      >
+        <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
+          <LongPressIndicator progress={fabDrag.longPressProgress} />
+          {/* Header */}
+          <div
+            className="flex items-center justify-between border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-3 py-2.5"
+            onPointerDown={fabDrag.onPointerDown}
+            onClickCapture={fabDrag.onClickCapture}
+            onDoubleClick={fabDrag.resetPosition}
           >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        {/* Transcript */}
-        <div className="max-h-60 overflow-y-auto p-3">
-          {filly.result?.transcript && (
-            <div className="mb-3">
-              <span className="text-[10px] font-medium text-gray-400 uppercase">
-                {t("transcript")}
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white">
+                <CheckCircle2 className="h-3.5 w-3.5" />
               </span>
-              <p className="mt-1 text-xs leading-relaxed text-gray-600">
-                {filly.result.transcript}
-              </p>
+              <span className="text-xs font-semibold text-gray-700">
+                {t("fields_filled", { n: filledCount })}
+              </span>
+              {!editingTranscript && filly.status !== "processing" && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={handleReprocess}
+                    className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700"
+                    title={t("reprocess")}
+                  >
+                    <RefreshCw className="h-2.5 w-2.5" />
+                    {t("reprocess")}
+                  </Button>
+                </div>
+              )}
             </div>
-          )}
+            <button
+              onClick={() => {
+                setExpanded(false);
+                setTranscriptMinimized(true);
+              }}
+              className="rounded p-1 text-gray-400 hover:bg-gray-100"
+              title={t("minimize")}
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          </div>
 
-          {filly.result?.structuredData && (
-            <div>
-              <span className="text-[10px] font-medium text-gray-400 uppercase">
-                {t("extracted_values")}
-              </span>
-              <div className="mt-1 space-y-1">
-                {isResolvingFields ? (
-                  <div className="flex items-center justify-center py-2">
-                    <p className="text-xs text-gray-400">
-                      {t("filly_is_resolving_fields")}
-                    </p>
-                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                  </div>
-                ) : appliedFields.length === 0 ? (
-                  <p className="text-xs text-gray-400">
-                    {t("no_matching_fields")}
-                  </p>
-                ) : (
-                  appliedFields.map((field, i) => (
-                    <div
-                      key={`${field.qId}-${i}`}
-                      className={cn(
-                        "flex items-center justify-between rounded px-2 py-1",
-                        field.error ? "bg-amber-50" : "bg-gray-50",
-                      )}
-                    >
-                      <span className="text-xs text-gray-500 mr-5">
-                        {field.label}
-                      </span>
-                      {field.error ? (
-                        <span className="text-xs font-medium text-amber-700">
-                          {field.error}
-                        </span>
-                      ) : (
-                        <span className="text-xs font-medium text-gray-900">
-                          {field.structuredValue
-                            ? t("n_filled", {
-                                n: Array.isArray(field.structuredValue)
-                                  ? field.structuredValue.length
-                                  : 1,
-                              })
-                            : field.coding
-                              ? field.coding.display
-                              : (field.matchedValue ?? t("n_filled", { n: 1 }))}
-                          {field.matchedNote && (
-                            <span className="ml-1 font-normal text-gray-500">
-                              ({field.matchedNote})
-                            </span>
-                          )}
-                        </span>
-                      )}
+          {/* Transcript */}
+          <div className="max-h-60 overflow-y-auto p-3">
+            {filly.result?.transcript && (
+              <div className="mb-3">
+                <div className="flex items-center justify-between">
+                  <span className="flex gap-3 text-[10px] font-medium text-gray-400 uppercase">
+                    {t("transcript")}
+                  </span>
+                  {!editingTranscript && filly.status !== "processing" && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleEditTranscript}
+                        className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700"
+                        title={t("edit_transcript")}
+                      >
+                        <Pencil className="h-2.5 w-2.5" />
+                        {t("edit")}
+                      </button>
                     </div>
-                  ))
+                  )}
+                </div>
+                {filly.status === "processing" ? (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {t("retrying")}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs leading-relaxed text-gray-600">
+                    {filly.result.transcript}
+                  </p>
                 )}
               </div>
-            </div>
-          )}
+            )}
 
-          {filly.error && <p className="text-xs text-red-500">{filly.error}</p>}
-        </div>
+            {filly.result?.structuredData && (
+              <div>
+                <span className="text-[10px] font-medium text-gray-400 uppercase">
+                  {t("extracted_values")}
+                </span>
+                <div className="mt-1 space-y-1">
+                  {isResolvingFields ? (
+                    <div className="flex items-center justify-center py-2">
+                      <p className="text-xs text-gray-400">
+                        {t("filly_is_resolving_fields")}
+                      </p>
+                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                    </div>
+                  ) : appliedFields.length === 0 ? (
+                    <p className="text-xs text-gray-400">
+                      {t("no_matching_fields")}
+                    </p>
+                  ) : (
+                    appliedFields.map((field, i) => (
+                      <button
+                        key={`${field.qId}-${i}`}
+                        type="button"
+                        onClick={() => highlightField(field.qId, !!field.error)}
+                        title={t("go_to_field")}
+                        className={cn(
+                          "flex w-full items-center justify-between rounded px-2 py-1 text-left transition-colors",
+                          field.error
+                            ? "bg-amber-50 hover:bg-amber-100"
+                            : "bg-gray-50 hover:bg-gray-100",
+                        )}
+                      >
+                        <span className="text-xs text-gray-500 mr-5">
+                          {field.label}
+                        </span>
+                        {field.error ? (
+                          <span className="text-xs font-medium text-amber-700">
+                            {field.error}
+                          </span>
+                        ) : (
+                          <span className="text-xs font-medium text-gray-900">
+                            {field.structuredValue
+                              ? t("n_filled", {
+                                  n: Array.isArray(field.structuredValue)
+                                    ? field.structuredValue.length
+                                    : 1,
+                                })
+                              : field.coding
+                                ? field.coding.display
+                                : (field.matchedValue ??
+                                  t("n_filled", { n: 1 }))}
+                            {field.matchedNote && (
+                              <span className="ml-1 font-normal text-gray-500">
+                                ({field.matchedNote})
+                              </span>
+                            )}
+                          </span>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
 
-        {/* Footer */}
-        <div className="border-t border-gray-100 px-3 py-2">
-          <button
-            onClick={handleDismiss}
-            className="w-full rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200"
-          >
-            {t("done")}
-          </button>
+            {filly.error && (
+              <p className="text-xs text-red-500 mt-1.5">{filly.error}</p>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-gray-100 px-3 py-2">
+            <button
+              onClick={handleDismiss}
+              className="w-full rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200"
+            >
+              {t("done")}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      {editingTranscript && (
+        <div className="fixed inset-0 z-10000 flex items-center justify-center bg-black/40 p-4">
+          <div className="flex w-full max-w-[32rem] min-w-0 flex-col rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 bg-linear-to-r from-primary-100 to-transparent rounded-t-2xl">
+              <span className="text-sm font-semibold text-gray-700">
+                {t("edit_transcript")}
+              </span>
+              <button
+                onClick={handleCancelEditTranscript}
+                className="rounded p-1 text-gray-400 hover:bg-gray-100"
+                title={t("cancel")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <textarea
+              value={draftTranscript}
+              onChange={(e) => setDraftTranscript(e.target.value)}
+              rows={10}
+              autoFocus
+              className="m-4 min-w-0 resize-y rounded-md border border-gray-200 p-3 text-sm leading-relaxed text-gray-700 ring-primary-400 focus:border-primary-400 focus:outline-hidden"
+            />
+            <div className="flex justify-end gap-2 border-t border-gray-100 px-4 py-3">
+              <button
+                onClick={handleCancelEditTranscript}
+                className="rounded-md px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
+              >
+                {t("cancel")}
+              </button>
+              <button
+                onClick={handleRetryWithCorrectedTranscript}
+                disabled={!draftTranscript.trim()}
+                className="flex items-center gap-1 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                <RotateCcw className="h-3 w-3" />
+                {t("retry")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1092,12 +1259,12 @@ function AiPulse() {
 
 // --- Form fill utilities ---
 
-function highlightField(qId: string): void {
-  const HIGHLIGHT_CLASS = "filly-highlight";
+function highlightField(qId: string, isError = false): void {
+  const HIGHLIGHT_CLASS = isError ? "filly-highlight-error" : "filly-highlight";
   const el = document.getElementById(`question-${qId}`);
   if (!el) return;
 
-  el.classList.remove(HIGHLIGHT_CLASS);
+  el.classList.remove("filly-highlight", "filly-highlight-error");
   void el.offsetWidth;
   el.classList.add(HIGHLIGHT_CLASS);
   el.scrollIntoView({ behavior: "smooth", block: "center" });

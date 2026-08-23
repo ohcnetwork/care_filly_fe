@@ -5,9 +5,11 @@ import {
   MedispeakApiError,
   type MedispeakResult,
   type MedispeakSessionHandle,
+  type RetryParams,
   commitMedispeakSession,
   createMedispeakSession,
   pollMedispeakResult,
+  retryMedispeakSession,
   uploadMedispeakSegment,
 } from "@/lib/medispeak-api";
 import { resolvePreferredMicDeviceId } from "@/lib/mic-preference";
@@ -24,8 +26,10 @@ const DEBUG = import.meta.env.DEV;
 // Spoken language hint, comma-separated ISO codes (e.g. "ta" or "ta,en").
 // Forcing the language avoids per-chunk auto-detection flip-flopping on
 // code-switched speech (e.g. Tamil consultation with English drug names).
+// "auto" is Medispeak's own no-hint sentinel (Scribe::AsrStage::AUTO_DETECT) —
+// anything else reaches the ASR provider as a literal (invalid) language code.
 const FILLY_LANGUAGES: string[] = (
-  import.meta.env.REACT_FILLY_LANGUAGES || "auto_detect"
+  import.meta.env.REACT_FILLY_LANGUAGES || "auto"
 )
   .split(",")
   .map((code: string) => code.trim())
@@ -58,6 +62,10 @@ function describeStopError(err: unknown): string {
     return "No speech was detected in that recording. Please try again.";
   }
   return err instanceof Error ? err.message : "Failed to process recording";
+}
+
+function describeRetryError(err: unknown): string {
+  return err instanceof Error ? err.message : "Failed to retry";
 }
 
 /** Segment transcription runs async server-side; re-committing retries
@@ -102,6 +110,8 @@ interface UseFillyReturn {
   stopRecording: () => Promise<void>;
   cancelRecording: () => Promise<void>;
   reset: () => Promise<void>;
+  retryStructuring: (transcript: string) => Promise<void>;
+  retryTranscription: () => Promise<void>;
 }
 
 export function useFilly({
@@ -345,6 +355,36 @@ export function useFilly({
     onError,
   ]);
 
+  const runRetry = useCallback(
+    async (params: RetryParams) => {
+      const handle = medispeakHandleRef.current;
+      if (!handle) return;
+      try {
+        setError(null);
+        updateStatus("processing");
+        await retryMedispeakSession(handle, params);
+        const data = await awaitMedispeakResult(handle);
+        finishWithMedispeakResult(data);
+      } catch (err) {
+        const message = describeRetryError(err);
+        setError(message);
+        updateStatus("failed");
+        onError?.(err instanceof Error ? err : new Error(message));
+      }
+    },
+    [updateStatus, awaitMedispeakResult, finishWithMedispeakResult, onError],
+  );
+
+  const retryStructuring = useCallback(
+    (transcript: string) => runRetry({ scope: "structuring", transcript }),
+    [runRetry],
+  );
+
+  const retryTranscription = useCallback(
+    () => runRetry({ scope: "transcription" }),
+    [runRetry],
+  );
+
   const cancelRecording = useCallback(async () => {
     recorderRef.current?.cancel();
     recorderRef.current = null;
@@ -384,5 +424,7 @@ export function useFilly({
     stopRecording,
     cancelRecording,
     reset,
+    retryStructuring,
+    retryTranscription,
   };
 }
