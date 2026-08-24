@@ -193,7 +193,7 @@ export async function pollMedispeakResult(
   handle: MedispeakSessionHandle,
   {
     intervalMs = 750,
-    maxAttempts = 160,
+    maxAttempts = 240,
     onTranscript,
   }: {
     intervalMs?: number;

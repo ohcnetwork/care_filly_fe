@@ -125,6 +125,16 @@ export interface MedispeakFieldSpec {
   description?: string;
 }
 
+// to make sure that the labels are unique
+function dedupeLabels(fields: FormField[]): FormField[] {
+  const seenCount = new Map<string, number>();
+  return fields.map((f) => {
+    const count = (seenCount.get(f.label) ?? 0) + 1;
+    seenCount.set(f.label, count);
+    return count === 1 ? f : { ...f, label: `${f.label} (${count})` };
+  });
+}
+
 /**
  * Build Medispeak's typed field schema from CARE form fields.
  *
@@ -135,7 +145,7 @@ export interface MedispeakFieldSpec {
  */
 export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
   const specs: MedispeakFieldSpec[] = [];
-  for (const f of fields) {
+  for (const f of dedupeLabels(fields)) {
     if (f.structuredType) {
       const description = withHelpText(
         f,
