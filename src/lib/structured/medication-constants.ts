@@ -475,6 +475,12 @@ const MAN_FREQUENCY_MAP: Record<
   "0-1-0": "NOON",
 };
 
+// Reverse of MAN_FREQUENCY_MAP — the M-A-N pattern for a timing key, used to
+// disambiguate variants that share a FHIR code (e.g. BID vs BID_MORNING_NOON).
+const TIMING_KEY_TO_MAN: Record<string, string> = Object.fromEntries(
+  Object.entries(MAN_FREQUENCY_MAP).map(([pattern, key]) => [key, pattern]),
+);
+
 const MAN_PATTERN = /^[\d]+(?:\/[\d]+)?(-[\d]+(?:\/[\d]+)?){1,3}$/;
 
 const FREQUENCY_ALIASES: Record<
@@ -572,6 +578,23 @@ export interface ResolvedDosageFrequency {
   text?: string;
 }
 
+// Resolves a phrase to its timing-option key so the caller can also look up TIMING_KEY_TO_MAN.
+function resolveTimingKey(normalized: string): string | null {
+  const aliasKey = FREQUENCY_ALIASES[normalized];
+  if (aliasKey) return aliasKey;
+
+  const entry = Object.entries(MEDICATION_REQUEST_TIMING_OPTIONS).find(
+    ([, option]) =>
+      option.display.toLowerCase() === normalized ||
+      option.display.toLowerCase().includes(normalized) ||
+      normalized.includes(option.timing.code.display.toLowerCase()) ||
+      option.timing.code.display.toLowerCase() === normalized ||
+      option.timing.code.code.toLowerCase() === normalized,
+  );
+
+  return entry?.[0] ?? null;
+}
+
 export function resolveDosageFrequency(
   frequency: unknown,
 ): ResolvedDosageFrequency {
@@ -595,21 +618,14 @@ export function resolveDosageFrequency(
     return { timingOption: null };
   }
 
-  const aliasKey = FREQUENCY_ALIASES[normalized];
-  if (aliasKey) {
-    return { timingOption: MEDICATION_REQUEST_TIMING_OPTIONS[aliasKey] };
-  }
+  const key = resolveTimingKey(normalized);
+  if (!key) return { timingOption: null };
 
-  const matched = Object.values(MEDICATION_REQUEST_TIMING_OPTIONS).find(
-    (option) =>
-      option.display.toLowerCase() === normalized ||
-      option.display.toLowerCase().includes(normalized) ||
-      normalized.includes(option.timing.code.display.toLowerCase()) ||
-      option.timing.code.display.toLowerCase() === normalized ||
-      option.timing.code.code.toLowerCase() === normalized,
-  );
-
-  return { timingOption: matched ?? null };
+  // `text` disambiguates code collisions like BID vs BID_MORNING_NOON downstream.
+  return {
+    timingOption: MEDICATION_REQUEST_TIMING_OPTIONS[key],
+    text: TIMING_KEY_TO_MAN[key],
+  };
 }
 
 export function findTimingOption(
