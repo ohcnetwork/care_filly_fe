@@ -35,10 +35,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 import { useFilly } from "@/hooks/useFilly";
-import {
-  FILLY_LANGUAGE_OPTIONS,
-  useFillyLanguage,
-} from "@/hooks/useFillyLanguage";
+import { useFillyLanguage } from "@/hooks/useFillyLanguage";
 import { useFillyPreference } from "@/hooks/useFillyPreference";
 import { useMicrophoneDevices } from "@/hooks/useMicrophoneDevices";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -702,7 +699,7 @@ function FillyControllerInner({
                 {t("language")}
               </div>
               <div className="max-h-48 overflow-y-auto p-1">
-                {FILLY_LANGUAGE_OPTIONS.map((option) => {
+                {fillyLanguage.options.map((option) => {
                   const selected = option.code === fillyLanguage.language;
                   return (
                     <button

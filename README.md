@@ -49,12 +49,42 @@ never reaches the browser), or session creation returns 502.
 
 ---
 
+## Configuring available languages
+
+By default only **Auto-detect** is offered. A deployment opts into specific
+spoken languages — restricting the list to the ones your clinicians actually
+use gives the ASR provider a real hint instead of guessing per audio chunk.
+
+**Preferred — plugin config in CARE**, comma-separated ISO codes:
+
+```json
+{
+  "name": "care_filly_fe",
+  "config": { "FILLY_LANGUAGES": "ta,en" }
+}
+```
+
+**Fallback — build-time env var**, for local development (`REACT_FILLY_LANGUAGES`
+in `.env`; rebuild after editing).
+
+Supported codes cover Indic set — `en`, `hi`, `ta`, `te`, `ml`, `kn`,
+`bn`, `mr`, `gu`, `pa`, `as`, `ur`, `ne`, `kok`, `ks`, `sd`, `sa`, `sat`, `mni`,
+`brx`, `mai`, `doi` — plus `auto`.
+
+Clinicians pick a language from the same settings menu used to choose a
+microphone (the gear icon next to **Start**); the choice is persisted per-user.
+
+---
+
 ## What it does
 
 - **Record consultations** — a floating mic button captures the doctor–patient conversation; an in-house **client-side VAD** (Silero via `@ricky0123/vad-web`) segments speech into utterances that are uploaded to Medispeak as they finish, while recording continues.
 - **Transcription** — each uploaded utterance is transcribed as it arrives; the plugin polls the session for the assembled transcript.
 - **Structured extraction** — the current form's fields are sent as a Medispeak `form` output spec, so the model returns structured JSON keyed to those fields.
 - **Auto-fill forms** — extracted values are fuzzy-matched to CARE questionnaire fields and written into the form, then highlighted and scrolled into view for clinician review.
+- **Review & jump to a field** — clicking any extracted value in the results panel scrolls to and highlights that question (green on success, red if it couldn't be matched and needs manual entry).
+- **Reprocess on failure** — if transcription/structuring fails, a **Reprocess** button retries against the audio already stored server-side, no need to re-record.
+- **Language selection** — clinicians pick a spoken-language hint from the mic settings menu (see "Configuring available languages"), persisted per-user.
 - **Per-user opt-in** — Filly is hidden until the user enables it on their own settings page.
 
 ---
@@ -171,18 +201,20 @@ src/
 ├── index.tsx                 # Module-federation entry + exports
 ├── hooks/
 │   ├── useFilly.ts           # VAD recorder + Medispeak session lifecycle
+│   ├── useFillyLanguage.ts   # Spoken-language options + per-user selection
 │   └── useFillyPreference.ts # Per-user opt-in via CARE core User.preferences
 ├── components/
 │   └── filly/
 │       ├── FillyController.tsx     # Floating widget + form auto-fill
 │       ├── FillyProfileSection.tsx # Profile opt-in section
 │       └── FillySettingsPage.tsx   # User settings page
-└── lib/
-    ├── filly-be.ts           # care_filly backend URL (from window.CARE_API_URL)
-    ├── plugin-config.ts      # Host-supplied runtime plugin config
-    ├── medispeak-api.ts      # Session/token seam + direct Medispeak calls
-    ├── filly-engine.ts       # VadRecorder (Silero VAD)
-    ├── template-builder.ts   # Form fields → Medispeak FieldSpec[]
+├── lib/
+│   ├── filly-be.ts           # care_filly backend URL (from window.CARE_API_URL)
+│   ├── plugin-config.ts      # Host-supplied runtime plugin config
+│   ├── medispeak-api.ts      # Session/token seam + direct Medispeak calls
+│   ├── filly-engine.ts       # VadRecorder (Silero VAD)
+│   ├── template-builder.ts   # Form fields → Medispeak FieldSpec[]
+│   ├── language-preference.ts # Per-user spoken-language persistence
     ├── structured/           # Structured data matching & form fill
     └── types/filly.ts
 ```
