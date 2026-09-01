@@ -186,6 +186,35 @@ export async function commitMedispeakSession(
   });
 }
 
+export interface RetryParams {
+  scope: "structuring" | "transcription";
+  /** structuring scope only — replaces the transcript and fills from it. */
+  transcript?: string;
+}
+
+/**
+ * Re-runs a finished session (POST .../retry). `scope: "structuring"` keeps
+ * (or replaces, via `transcript`) the existing transcript and only re-fills
+ * the form; `scope: "transcription"` re-derives the transcript from the
+ * audio already stored on Medispeak — no re-upload needed either way.
+ */
+export async function retryMedispeakSession(
+  handle: MedispeakSessionHandle,
+  params: RetryParams,
+): Promise<void> {
+  await withTokenRefresh(handle, async (token) => {
+    await medispeakFetch(
+      `/scribe_sessions/${handle.medispeakSessionId}/retry`,
+      token,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      },
+    );
+  });
+}
+
 const TERMINAL_STATUSES = new Set(["completed", "partial", "failed"]);
 
 /** Poll until the session reaches a terminal status, mapping the result. But show transcript updates as they arrive. */
