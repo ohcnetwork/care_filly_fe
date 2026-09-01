@@ -25,7 +25,7 @@ function onsetExampleDate(daysAgo: number): string {
 }
 
 const SNOMED_INFO_EXAMPLE = {
-  code: "386661006",
+  code: "",
   display_names: ["Fever", "Fever (finding)"],
 };
 
@@ -237,9 +237,9 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
   string
 > = {
   symptom:
-    "array of symptoms; snomed_info required; onset_datetime as date only YYYY-MM-DD (if patient says '2 weeks ago', subtract from today; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
+    "array of symptoms; snomed_info required (code must always be left as an empty string — never guess or fabricate a SNOMED code, matching is done from display_names); onset_datetime as date only YYYY-MM-DD (if patient says '2 weeks ago', subtract from today; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
   diagnosis:
-    "array of diagnoses; snomed_info required; onset_datetime as date only YYYY-MM-DD (compute from relative phrases like '3 days ago'; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
+    "array of diagnoses; snomed_info required (code must always be left as an empty string — never guess or fabricate a SNOMED code, matching is done from display_names); onset_datetime as date only YYYY-MM-DD (compute from relative phrases like '3 days ago'; if no onset timing is mentioned at all, use today's date — the date of examination — do NOT guess or fabricate a date)",
   allergy_intolerance:
     "array of allergies/intolerances; snomed_info from substance hierarchy (code must always be left as an empty string); criticality is exactly one of low | high | unable_to_assess (map 'mild'/'moderate' to low, 'severe'/'anaphylaxis' to high, use unable_to_assess if not stated or unclear — never use any other word); last_occurrence is the date (YYYY-MM-DD) of the most recent reaction, only if explicitly mentioned (e.g. 'last reaction was 2 weeks ago', 'happened last month', since 2020) — compute relative phrases from today's date, omit entirely if not mentioned, never guess",
   medication_statement:

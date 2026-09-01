@@ -47,25 +47,31 @@ export async function lookupCode(
 
   try {
     const results = await expandValueSet(valueSetSlug, code, 10);
-    const match = results.find((r) => r.code === code) ?? results[0];
-    if (!match) return searchByDisplay(valueSetSlug, displays);
-
     const displayLower = displays.map((d) => d.toLowerCase());
-    const names = [
-      match.display,
-      ...(match.designation?.map((d) => d.value) ?? []),
-    ].map((n) => n.toLowerCase());
 
-    const hasDisplayMatch = displayLower.some((d) =>
-      names.some((n) => n.includes(d) || d.includes(n)),
-    );
+    const matchesDisplay = (
+      candidate: ValueSetExpandResult["results"][number],
+    ) => {
+      const names = [
+        candidate.display,
+        ...(candidate.designation?.map((d) => d.value) ?? []),
+      ].map((n) => n.toLowerCase());
+      return displayLower.some((d) =>
+        names.some((n) => n.includes(d) || d.includes(n)),
+      );
+    };
 
-    if (hasDisplayMatch || results.length === 1) {
-      return {
-        system: match.system,
-        code: match.code,
-        display: match.display,
-      };
+    // A code match by itself is not proof of correctness — the model can
+    // pair a real code with the wrong concept (e.g. code for "sinusitis"
+    // labeled "yellow fever"). Only trust a result whose display name
+    // actually matches what the model said; prefer an exact code+display
+    // match, otherwise take any display match from the search.
+    const match =
+      results.find((r) => r.code === code && matchesDisplay(r)) ??
+      results.find(matchesDisplay);
+
+    if (match) {
+      return { system: match.system, code: match.code, display: match.display };
     }
   } catch (err) {
     console.warn("[Filly] lookupCode failed:", err);
