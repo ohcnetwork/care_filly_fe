@@ -53,6 +53,7 @@
   "minimize_transcript": "Minimize transcript",
   "no_microphones_found": "No microphones were found.",
   "no_permission_filly": "You do not have permission to use Filly on this facility.",
+  "filly_backend_unavailable": "The Filly service is not available. Verify that the care_filly BE plugin is enabled in CARE and try again.",
   "pause": "Pause",
   "paused": "Paused",
   "position_reset": "Position reset",

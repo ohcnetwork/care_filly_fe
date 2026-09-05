@@ -1,7 +1,9 @@
+import { useQuery } from "@tanstack/react-query";
 import { Loader2, Mic } from "lucide-react";
 import { useState } from "react";
 
 import { FILLY_BASE_URL } from "@/lib/filly-be";
+import { ensureFillyBackendAvailable } from "@/lib/medispeak-api";
 
 import { Switch } from "@/components/ui/switch";
 
@@ -31,6 +33,11 @@ export default function FillyProfileSection({
   const { hasPermission, isLoading: isPermissionLoading } =
     useHasFacilityPermission("can_use_filly");
   const [error, setError] = useState<string | null>(null);
+  const backend = useQuery({
+    queryKey: ["filly-backend-availability"],
+    queryFn: ensureFillyBackendAvailable,
+    enabled: !!FILLY_BASE_URL,
+  });
 
   if (!FILLY_BASE_URL) return null;
 
@@ -43,7 +50,12 @@ export default function FillyProfileSection({
     }
   };
 
-  if (isPermissionLoading || !hasPermission) {
+  if (
+    backend.isLoading ||
+    backend.isError ||
+    isPermissionLoading ||
+    !hasPermission
+  ) {
     return (
       <div className={`care-filly-fe-container ${className ?? ""}`}>
         <section className="flex flex-col gap-5 sm:flex-row">
@@ -60,8 +72,12 @@ export default function FillyProfileSection({
           {/* Right: card */}
           <div className="sm:w-3/4">
             <div className="overflow-visible rounded-lg bg-white px-4 py-5 shadow-sm sm:rounded-lg sm:px-6 items-center h-full flex">
-              {isPermissionLoading ? (
+              {backend.isLoading || isPermissionLoading ? (
                 <Loader2 className="size-6 shrink-0 animate-spin text-gray-400" />
+              ) : backend.isError ? (
+                <p className="text-sm text-secondary-600">
+                  {t("filly_backend_unavailable")}
+                </p>
               ) : (
                 <p className="text-sm text-secondary-600">
                   {t("no_permission_filly")}

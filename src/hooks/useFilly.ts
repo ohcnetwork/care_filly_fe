@@ -8,6 +8,7 @@ import {
   type RetryParams,
   commitMedispeakSession,
   createMedispeakSession,
+  ensureFillyBackendAvailable,
   pollMedispeakResult,
   retryMedispeakSession,
   uploadMedispeakSegment,
@@ -257,6 +258,8 @@ export function useFilly({
         accumulatedRef.current = 0;
         segmentSeqRef.current = 0;
         setDuration(0);
+
+        await ensureFillyBackendAvailable();
 
         const { facilityId, formFields, language } =
           buildSessionExtras(options);
