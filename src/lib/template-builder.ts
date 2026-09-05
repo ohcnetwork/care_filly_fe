@@ -87,7 +87,7 @@ function collectFields(questions: FormQuestion[], out: FormField[]) {
       continue;
     }
 
-    if ((q as Record<string, unknown>).structured_type) {
+    if (q.structured_type) {
       continue;
     }
 

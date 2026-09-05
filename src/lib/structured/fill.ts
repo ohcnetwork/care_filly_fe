@@ -311,12 +311,12 @@ function findOtherInvestigationQuestion(
   formState: unknown,
   excludeQId: string,
 ): { qId: string; questionType: string; text: string } | null {
-  let best: {
+  const candidates: {
     qId: string;
     questionType: string;
     text: string;
     score: number;
-  } | null = null;
+  }[] = [];
 
   if (!Array.isArray(formState)) return null;
 
@@ -349,11 +349,21 @@ function findOtherInvestigationQuestion(
         score = 50;
       }
 
-      if (score > (best?.score ?? 0)) {
-        best = { qId: question.id as string, questionType: type, text, score };
+      if (score > 0) {
+        candidates.push({
+          qId: question.id as string,
+          questionType: type,
+          text,
+          score,
+        });
       }
     });
   }
+
+  const best = candidates.reduce<(typeof candidates)[number] | null>(
+    (acc, candidate) => (acc && acc.score >= candidate.score ? acc : candidate),
+    null,
+  );
 
   return best
     ? { qId: best.qId, questionType: best.questionType, text: best.text }

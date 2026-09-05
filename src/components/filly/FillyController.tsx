@@ -414,7 +414,6 @@ function FillyControllerInner({
         const fieldsToFill = await collectFieldsToFill(
           formState,
           result.structuredData,
-          result.transcript,
         );
 
         if (import.meta.env.DEV) {
