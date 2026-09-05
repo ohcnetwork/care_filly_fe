@@ -857,13 +857,13 @@ function FillyControllerInner({
                 className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200"
                 title={t("pause")}
               >
-                <Pause className="h-2.5 w-2.5 blur-lg" />
+                <Pause className="h-2.5 w-2.5" />
               </button>
             </div>
             <button
               onClick={handleStop}
               title={t("stop_and_process")}
-              className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 shadow-lg shadow-primary-700/40 transition-all active:scale-95 hover:shadow-xl hover:shadow-primary-700/50 opacity-85 blur-lg hover:opacity-100"
+              className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 shadow-lg shadow-primary-700/40 transition-all active:scale-95 hover:shadow-xl hover:shadow-primary-700/50 opacity-85 hover:opacity-100"
             >
               {/* rotating conic glow */}
               <span className="filly-spin-slow pointer-events-none absolute -inset-10 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.3),transparent)] opacity-50" />
@@ -872,7 +872,7 @@ function FillyControllerInner({
                 {barHeights.map((h, i) => (
                   <span
                     key={i}
-                    className="w-0.5 rounded-full bg-white/85 transition-[height] duration-75 blur-2xl"
+                    className="w-0.5 rounded-full bg-white/90 transition-[height] duration-75"
                     style={{ height: `${h * 100}%` }}
                   />
                 ))}

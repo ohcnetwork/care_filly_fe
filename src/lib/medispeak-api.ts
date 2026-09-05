@@ -81,6 +81,20 @@ function requireFillyBase(): string {
   return FILLY_BASE_URL;
 }
 
+/** Verify that CARE has the care_filly backend plugin mounted. */
+export async function ensureFillyBackendAvailable(): Promise<{ ok: true }> {
+  const response = await fetch(`${requireFillyBase()}/../healthz`);
+  const data = (await response.json().catch(() => null)) as { ok?: boolean } | null;
+
+  if (!response.ok || data?.ok !== true) {
+    throw new MedispeakApiError(
+      "The Filly service is not available. Verify that the care_filly BE plugin is enabled in CARE and try again.",
+    );
+  }
+
+  return { ok: true };
+}
+
 async function parseError(response: Response): Promise<never> {
   const data = (await response.json().catch(() => ({}))) as {
     error?: { code?: string; message?: string };
