@@ -83,10 +83,8 @@ function requireFillyBase(): string {
 
 /** Verify that CARE has the care_filly backend plugin mounted. */
 export async function ensureFillyBackendAvailable(): Promise<{ ok: true }> {
-  const response = await fetch(`${requireFillyBase()}/../healtz`);
-  const data = (await response.json().catch(() => null)) as {
-    ok?: boolean;
-  } | null;
+  const response = await fetch(`${requireFillyBase()}/../healthz`);
+  const data = (await response.json().catch(() => null)) as { ok?: boolean } | null;
 
   if (!response.ok || data?.ok !== true) {
     throw new MedispeakApiError(
