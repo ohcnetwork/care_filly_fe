@@ -1,3 +1,4 @@
+import { deserializeAppointment } from "./appointment";
 import type { CareUserMinimal } from "./care-api";
 import {
   deserializeAllergies,
@@ -230,6 +231,13 @@ export const STRUCTURED_TEMPLATE_EXAMPLES: Record<
     },
   ],
   time_of_death: "2026-08-18T15:45:00.000Z",
+  appointment: {
+    resource_type: "practitioner",
+    resource_name: "Dr. Smith",
+    date: "2026-09-16",
+    time: "15:00",
+    note: "Follow-up for hypertension",
+  },
 };
 
 export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
@@ -250,6 +258,8 @@ export const STRUCTURED_TEMPLATE_DESCRIPTIONS: Record<
     "array of investigations/lab tests/imaging ordered; each needs activity_definition with title or display_names (e.g. Lipid Panel, CBC, Chest X-Ray); put catalog items here; put anything NOT in the facility catalog under the separate 'Other Investigation' field key or in the free-text note; priority is exactly one of routine | urgent | asap | stat — 'as soon as possible'/'ASAP' maps to asap (NOT urgent), 'urgent' is for urgent-but-not-immediate, 'stat' is for immediate/emergency, default routine when unstated; patient_instruction is any instruction spoken TO THE PATIENT about that specific test (fasting/food restriction, hydration, stopping a medication beforehand, etc.) — capture it whenever mentioned, even briefly, it is a very common field, do not leave it null when the clinician gives such an instruction; body_site is only for a test/imaging targeting a specific anatomical location (e.g. chest X-ray, knee MRI), as snomed_info { code, display_names }, omit if not mentioned",
   time_of_death:
     "the exact date/time the clinician pronounced death, as a plain ISO datetime string (e.g. '2026-05-02T02:00:00'); only include if a death pronouncement was explicitly stated (e.g. 'died around 2 AM', 'time of death 14:20', 'died/dead on 24 may 2025'); leave this out entirely otherwise — never infer or guess a time",
+  appointment:
+    "a single follow-up/appointment booking request, as one object (not an array) — only include this if the clinician explicitly asked to schedule/book a follow-up or appointment, never infer one just because a review date was mentioned in passing; resource_name is who/what to book with, only if explicitly named (a person's name, e.g. 'Dr. Smith'; a location, e.g. 'X-ray room', 'OPD 3'; or a named clinical service, e.g. 'Physiotherapy') — omit entirely if they just say 'book a follow-up' with nothing named, it then defaults to whoever is running this consultation; resource_type must be set whenever resource_name is set — exactly one of practitioner (a person) | location (a room/ward/physical place) | healthcare_service (a named clinical service, not a person or place) — infer it from what kind of thing resource_name refers to, omit both together if nothing was named; date is the day requested (this IS a future date being scheduled, not a past onset — resolve relative phrases like 'next Tuesday', 'in two weeks', 'next month' against today) as YYYY-MM-DD; time is the requested time, as 24-hour HH:mm if a specific time was stated, or 'morning'/'afternoon'/'evening' if only a loose time of day was given — omit entirely if no time was mentioned at all; note is any free-text reason/instruction for the visit, if stated",
 };
 
 export async function deserializeStructuredData(
@@ -299,6 +309,8 @@ export async function deserializeStructuredData(
     }
     case "time_of_death":
       return deserializeTimeOfDeath(raw, current as unknown[] | null);
+    case "appointment":
+      return deserializeAppointment(raw, current as unknown[] | null);
     default:
       return { data: current, errors: [] };
   }

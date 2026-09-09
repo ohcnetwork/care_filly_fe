@@ -26,10 +26,15 @@ import {
 } from "@/lib/fab-position";
 import {
   type FieldFill,
-  applyFieldToState,
+  buildSetResponseInput,
   collectFieldsToFill,
 } from "@/lib/structured/fill";
-import type { FillyResult } from "@/lib/types/filly";
+import type {
+  FillyResult,
+  ScribeActionDescriptor,
+  ScribeFormSummary,
+  ScribeInvoke,
+} from "@/lib/types/filly";
 import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
@@ -41,8 +46,10 @@ import { useMicrophoneDevices } from "@/hooks/useMicrophoneDevices";
 import { useTranslation } from "@/hooks/useTranslation";
 
 interface FillyControllerProps {
-  formState?: unknown;
-  setFormState?: (fn: (state: unknown) => unknown) => void;
+  /** The Scribe action contract care_fe's fill page hands us — undefined
+   *  (never passed) outside a questionnaire fill session. */
+  actions?: ScribeActionDescriptor[];
+  invoke?: ScribeInvoke;
 }
 
 const FIELD_FILL_DELAY_MS = 500;
@@ -349,10 +356,7 @@ export function FillyController(props: FillyControllerProps) {
   );
 }
 
-function FillyControllerInner({
-  formState,
-  setFormState,
-}: FillyControllerProps) {
+function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
@@ -401,7 +405,7 @@ function FillyControllerInner({
 
   const applyResults = useCallback(
     async (result: FillyResult) => {
-      if (!setFormState || !formState) return;
+      if (!invoke || !actions?.length) return;
       if (!result.structuredData) {
         console.warn("[Filly] No structured data to fill");
         return;
@@ -411,10 +415,18 @@ function FillyControllerInner({
       setIsResolvingFields(true);
 
       try {
+        const formsResult = await invoke("questionnaire.forms.list", {});
+        if (!formsResult.ok) {
+          console.error(
+            "[Filly] Could not read the open form:",
+            formsResult.error,
+          );
+          return;
+        }
+        const forms = (formsResult.data ?? []) as ScribeFormSummary[];
         const fieldsToFill = await collectFieldsToFill(
-          formState,
+          forms,
           result.structuredData,
-          result.transcript,
         );
 
         if (import.meta.env.DEV) {
@@ -433,17 +445,27 @@ function FillyControllerInner({
 
         fieldsToFill.forEach((field, index) => {
           const timeoutId = setTimeout(() => {
-            setFormState((currentState: unknown) =>
-              applyFieldToState(currentState, field),
-            );
-            highlightField(field.qId);
-            setFilledCount(index + 1);
-            if (field.structuredType === "service_request") {
-              expandServiceRequestRows(field.qId, field.structuredValue);
+            // A structured field with nothing resolved (extraction-only
+            // warning row) has nothing to write — just surface it.
+            if (field.structuredType && field.structuredEntries === undefined) {
+              highlightFieldByLabel(field.label, !!field.error);
+              setFilledCount(index + 1);
+              return;
             }
-            if (field.structuredType === "medication_request") {
-              revealMedicationAdvancedFields(field.qId, field.structuredValue);
-            }
+            void invoke(
+              "questionnaire.response.set",
+              buildSetResponseInput(field),
+            ).then((outcome) => {
+              if (!outcome.ok) {
+                setAppliedFields((current) =>
+                  current.map((f, i) =>
+                    i === index ? { ...f, error: outcome.error } : f,
+                  ),
+                );
+              }
+              highlightFieldByLabel(field.label, !outcome.ok);
+              setFilledCount(index + 1);
+            });
           }, index * FIELD_FILL_DELAY_MS);
 
           fillTimeoutsRef.current.push(timeoutId);
@@ -455,13 +477,13 @@ function FillyControllerInner({
         setIsResolvingFields(false);
       }
     },
-    [formState, setFormState],
+    [actions, invoke],
   );
 
   const [liveTranscript, setLiveTranscript] = useState<string>("");
 
   const filly = useFilly({
-    formState,
+    invoke,
     onTranscript: (transcript) => {
       setLiveTranscript(transcript);
     },
@@ -1067,9 +1089,11 @@ function FillyControllerInner({
                   ) : (
                     appliedFields.map((field, i) => (
                       <button
-                        key={`${field.qId}-${i}`}
+                        key={`${field.linkId}-${i}`}
                         type="button"
-                        onClick={() => highlightField(field.qId, !!field.error)}
+                        onClick={() =>
+                          highlightFieldByLabel(field.label, !!field.error)
+                        }
                         title={t("go_to_field")}
                         className={cn(
                           "flex w-full items-center justify-between rounded px-2 py-1 text-left transition-colors",
@@ -1087,16 +1111,11 @@ function FillyControllerInner({
                           </span>
                         ) : (
                           <span className="text-xs font-medium text-gray-900">
-                            {field.structuredValue
+                            {field.structuredEntries
                               ? t("n_filled", {
-                                  n: Array.isArray(field.structuredValue)
-                                    ? field.structuredValue.length
-                                    : 1,
+                                  n: field.structuredNewCount ?? 0,
                                 })
-                              : field.coding
-                                ? field.coding.display
-                                : (field.matchedValue ??
-                                  t("n_filled", { n: 1 }))}
+                              : (field.matchedValue ?? t("n_filled", { n: 1 }))}
                             {field.matchedNote && (
                               <span className="ml-1 font-normal text-gray-500">
                                 ({field.matchedNote})
@@ -1256,81 +1275,35 @@ function AiPulse() {
 
 // --- Form fill utilities ---
 
-function highlightField(qId: string, isError = false): void {
+// The Scribe action contract only exposes a question's link_id, not its
+// question id — and the renderer's DOM anchor (`data-question-id`) is
+// keyed by question id (see `QuestionBlock.tsx`/`SectionCard.tsx` in
+// care_fe). With no shared identifier to look up, the best this side can
+// do is match the question's own label text against the container whose
+// visible text is the closest (shortest) match — a leaf question's own
+// container, not a large enclosing group that merely contains it too.
+function highlightFieldByLabel(label: string, isError = false): void {
+  const trimmed = label.trim();
+  if (!trimmed) return;
+
   const HIGHLIGHT_CLASS = isError ? "filly-highlight-error" : "filly-highlight";
-  const el = document.getElementById(`question-${qId}`);
-  if (!el) return;
-
-  el.classList.remove("filly-highlight", "filly-highlight-error");
-  void el.offsetWidth;
-  el.classList.add(HIGHLIGHT_CLASS);
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
-
-  setTimeout(() => el.classList.remove(HIGHLIGHT_CLASS), 3000);
-}
-
-function expandServiceRequestRows(qId: string, structuredValue: unknown) {
-  if (!Array.isArray(structuredValue) || !structuredValue.length) return;
-
-  setTimeout(() => {
-    const container = document.getElementById(`question-${qId}`);
-    if (!container) return;
-
-    for (const item of structuredValue) {
-      const sr = (item as Record<string, unknown> | null)?.service_request as
-        | Record<string, unknown>
-        | undefined;
-      const title = typeof sr?.title === "string" ? sr.title : undefined;
-      const hasExtraDetails = !!(
-        sr?.body_site ||
-        (typeof sr?.patient_instruction === "string" &&
-          sr.patient_instruction.trim()) ||
-        (typeof sr?.note === "string" && sr.note.trim())
-      );
-      if (!title || !hasExtraDetails) continue;
-
-      const trigger = Array.from(
-        container.querySelectorAll<HTMLButtonElement>(
-          '[data-slot="collapsible-trigger"][data-state="closed"]',
-        ),
-      ).find((btn) => btn.textContent?.includes(title));
-      trigger?.click();
+  const nodes = document.querySelectorAll<HTMLElement>("[data-question-id]");
+  let target: HTMLElement | null = null;
+  for (const node of nodes) {
+    const text = node.textContent;
+    if (!text?.includes(trimmed)) continue;
+    if (!target || text.length < (target.textContent?.length ?? Infinity)) {
+      target = node;
     }
-  }, 100);
-}
+  }
+  if (!target) return;
 
-// expand the medication request advanced fields if any of the dosage instructions have additional instructions,
-// site, route, or method specified
-function revealMedicationAdvancedFields(
-  qId: string,
-  structuredValue: unknown,
-): void {
-  if (!Array.isArray(structuredValue) || !structuredValue.length) return;
+  target.classList.remove("filly-highlight", "filly-highlight-error");
+  void target.offsetWidth;
+  target.classList.add(HIGHLIGHT_CLASS);
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
 
-  const hasAdvancedData = structuredValue.some((medication) => {
-    const dosageInstruction = (medication as Record<string, unknown> | null)
-      ?.dosage_instruction;
-    if (!Array.isArray(dosageInstruction)) return false;
-    return dosageInstruction.some((di: Record<string, unknown>) => {
-      const additionalInstruction = di?.additional_instruction;
-      return (
-        (Array.isArray(additionalInstruction) &&
-          additionalInstruction.length > 0) ||
-        !!di?.site ||
-        !!di?.route ||
-        !!di?.method
-      );
-    });
-  });
-  if (!hasAdvancedData) return;
-
-  setTimeout(() => {
-    const container = document.getElementById(`question-${qId}`);
-    const toggle = (container ?? document).querySelector<HTMLElement>(
-      '[title="Show Advanced Fields"]',
-    );
-    toggle?.click();
-  }, 100);
+  setTimeout(() => target.classList.remove(HIGHLIGHT_CLASS), 3000);
 }
 
 export default FillyController;

@@ -1,5 +1,6 @@
 import { getHeaders } from "@/lib/request";
 
+import { getFacilityIdFromUrl } from "./care-api";
 import { buildMedicationSearchQueries } from "./medication-search";
 import type { Code } from "./types";
 
@@ -15,8 +16,14 @@ interface ValueSetExpandResult {
   >;
 }
 
+/**
+ * The backend resolves a bare slug to one of possibly several valuesets
+ * sharing it (core vs. facility-overridden) — `expand_slug` disambiguates
+ * by `facility`, unlike the plain `{id}/expand/` route (which needs the
+ * valueset's own UUID, not its slug, and has no facility context at all).
+ */
 export async function expandValueSet(
-  system: string,
+  slug: string,
   search: string,
   count = 10,
 ): Promise<ValueSetExpandResult["results"]> {
@@ -26,10 +33,16 @@ export async function expandValueSet(
     return [];
   }
 
-  const res = await fetch(`${baseUrl}/api/v1/valueset/${system}/expand/`, {
+  const facility = getFacilityIdFromUrl();
+  const res = await fetch(`${baseUrl}/api/v1/valueset/expand_slug/`, {
     method: "POST",
     headers: getHeaders(),
-    body: JSON.stringify({ search, count }),
+    body: JSON.stringify({
+      slug,
+      search,
+      count,
+      ...(facility && { facility }),
+    }),
   });
 
   if (!res.ok) return [];

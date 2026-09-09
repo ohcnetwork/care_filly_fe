@@ -20,7 +20,12 @@ import {
   buildFieldSpecs,
   extractFormFields,
 } from "@/lib/template-builder";
-import type { FillyResult, FillyStatus } from "@/lib/types/filly";
+import type {
+  FillyResult,
+  FillyStatus,
+  ScribeFormSummary,
+  ScribeInvoke,
+} from "@/lib/types/filly";
 
 const DEBUG = import.meta.env.DEV;
 
@@ -90,7 +95,7 @@ interface StartOptions {
 interface UseFillyOptions {
   /** Reserved — the CARE JWT is read from localStorage by the request layer. */
   accessToken?: string;
-  formState?: unknown;
+  invoke?: ScribeInvoke;
   onStatusChange?: (status: FillyStatus) => void;
   onTranscript?: (transcript: string) => void;
   onResult?: (result: FillyResult) => void;
@@ -116,7 +121,7 @@ interface UseFillyReturn {
 }
 
 export function useFilly({
-  formState: formStateProp,
+  invoke,
   onStatusChange,
   onTranscript,
   onResult,
@@ -194,18 +199,31 @@ export function useFilly({
 
   /**
    * Session parameters: facility, the form fields shaped into Medispeak's
-   * FieldSpec[], and the language hint.
+   * FieldSpec[], and the language hint. The field list comes from the
+   * Scribe action registry (`questionnaire.forms.list`), not a prop, so
+   * this reads whatever form is open right now rather than a snapshot.
    */
   const buildSessionExtras = useCallback(
-    (options?: StartOptions) => {
+    async (options?: StartOptions) => {
       const facilityId = getFacilityIdFromUrl();
-      const formFields: FormField[] = formStateProp
-        ? extractFormFields(formStateProp)
-        : [];
+      let formFields: FormField[] = [];
+      if (invoke) {
+        const formsResult = await invoke("questionnaire.forms.list", {});
+        if (formsResult.ok) {
+          formFields = extractFormFields(
+            (formsResult.data ?? []) as ScribeFormSummary[],
+          );
+        } else if (DEBUG) {
+          console.warn(
+            "[Filly] Could not read the open form:",
+            formsResult.error,
+          );
+        }
+      }
       const language = options?.language || FILLY_LANGUAGES;
       return { facilityId, formFields, language };
     },
-    [formStateProp],
+    [invoke],
   );
 
   // ── result polling ───────────────────────────────────────────────────────
@@ -262,7 +280,7 @@ export function useFilly({
         await ensureFillyBackendAvailable();
 
         const { facilityId, formFields, language } =
-          buildSessionExtras(options);
+          await buildSessionExtras(options);
 
         medispeakHandleRef.current = await createMedispeakSession({
           facilityId,

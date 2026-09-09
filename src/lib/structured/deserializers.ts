@@ -100,6 +100,41 @@ function normalizeCriticality(
   return ALLERGY_CRITICALITY_SYNONYMS[normalized] ?? "unable_to_assess";
 }
 
+// care_fe's clinicalRecordSchema (`useFillActions.ts`) requires an exact,
+// case-sensitive match against these — mirrored here since the two repos
+// build separately and share no types. A model-emitted value that misses
+// (wrong case, a synonym, "unknown") would otherwise reach that schema
+// unvalidated and fail the whole record, not just this field.
+const DIAGNOSIS_CLINICAL_STATUS = [
+  "active",
+  "recurrence",
+  "relapse",
+  "inactive",
+  "remission",
+  "resolved",
+] as const;
+const DIAGNOSIS_VERIFICATION_STATUS = [
+  "unconfirmed",
+  "provisional",
+  "differential",
+  "confirmed",
+  "refuted",
+  "entered_in_error",
+] as const;
+const DIAGNOSIS_SEVERITY = ["severe", "moderate", "mild"] as const;
+
+function normalizeEnumValue<T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+  fallback: T[number],
+): T[number] {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  const match = allowed.find((option) => option.toLowerCase() === normalized);
+  return (match as T[number] | undefined) ?? fallback;
+}
+
 async function resolveFindingCode(
   snomed: SnomedInfo,
   valueSetSlug: string,
@@ -148,10 +183,21 @@ export async function deserializeSymptoms(
         });
         return {
           code,
-          clinical_status: (row.clinical_status as string) || "active",
-          verification_status:
-            (row.verification_status as string) || "confirmed",
-          severity: (row.severity as string) || "moderate",
+          clinical_status: normalizeEnumValue(
+            row.clinical_status,
+            DIAGNOSIS_CLINICAL_STATUS,
+            "active",
+          ),
+          verification_status: normalizeEnumValue(
+            row.verification_status,
+            DIAGNOSIS_VERIFICATION_STATUS,
+            "confirmed",
+          ),
+          severity: normalizeEnumValue(
+            row.severity,
+            DIAGNOSIS_SEVERITY,
+            "moderate",
+          ),
           onset: {
             onset_datetime: onsetDatetime,
           },
@@ -207,10 +253,24 @@ export async function deserializeDiagnosis(
         });
         return {
           code,
-          clinical_status: (row.clinical_status as string) || "active",
-          verification_status:
-            (row.verification_status as string) || "confirmed",
-          severity: (row.severity as string) || null,
+          clinical_status: normalizeEnumValue(
+            row.clinical_status,
+            DIAGNOSIS_CLINICAL_STATUS,
+            "active",
+          ),
+          verification_status: normalizeEnumValue(
+            row.verification_status,
+            DIAGNOSIS_VERIFICATION_STATUS,
+            "confirmed",
+          ),
+          // Diagnosis severity is nullable (unlike symptom's) — an unset or
+          // unrecognized value clears it rather than guessing.
+          severity: row.severity
+            ? (DIAGNOSIS_SEVERITY.find(
+                (option) =>
+                  option === String(row.severity).trim().toLowerCase(),
+              ) ?? null)
+            : null,
           onset: {
             onset_datetime: onsetDatetime,
           },
@@ -347,7 +407,7 @@ export async function deserializeMedicationStatements(
         return {
           medication: code,
           status: "active",
-          dosage_text: (row.dosage_instructions as string) || undefined,
+          dosage_text: (row.dosage_instructions as string) || "",
           information_source: (row.information_source as string) || "patient",
           note: noNullStrings(row.note as string),
           reason: (row.reason as string) || undefined,

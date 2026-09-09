@@ -1,3 +1,4 @@
+import { buildDateContext } from "@/lib/structured/date-contract";
 import {
   getStructuredFieldDescription,
   getStructuredFieldExample,
@@ -7,113 +8,51 @@ import {
   type SupportedStructuredType,
   isSupportedStructuredType,
 } from "@/lib/structured/types";
-
-interface FormUnit {
-  code?: string;
-  display?: string;
-  system?: string;
-}
-
-interface FormQuestion {
-  id: string;
-  text: string;
-  description?: string;
-  type: string;
-  structured_type?: string;
-  questions?: FormQuestion[];
-  answer_option?: Array<{ value: string; display?: string }>;
-  answer_value_set?: string;
-  max_length?: number;
-  unit?: FormUnit;
-}
+import type { ScribeFormSummary } from "@/lib/types/filly";
 
 export interface FormField {
-  id: string;
+  linkId: string;
   label: string;
-  description?: string;
   type: string;
-  structuredType?: SupportedStructuredType;
   options?: string[];
-  answerValueSet?: string;
-  unit?: FormUnit;
-}
-
-export function withUnitSuffix(label: string, unit?: FormUnit): string {
-  const code = unit?.code || unit?.display;
-  return code ? `${label} (${code})` : label;
+  /** Set for a structured question — mutually exclusive with `options`. */
+  structuredType?: SupportedStructuredType;
 }
 
 /**
- * Extract all fillable fields from a CARE questionnaire,
- * flattening nested groups.
+ * Extract fillable fields from the Scribe action registry's flat form
+ * summary (`questionnaire.forms.list`) — groups and enable_when-disabled
+ * questions are already excluded. A structured question this deployment
+ * has no deserializer for is dropped too — there is no way to turn
+ * extracted data into a write for it.
  */
-export function extractFormFields(formState: unknown): FormField[] {
-  if (!Array.isArray(formState)) return [];
-
+export function extractFormFields(forms: ScribeFormSummary[]): FormField[] {
   const fields: FormField[] = [];
+  for (const form of forms) {
+    for (const q of form.questions) {
+      if (!q.enabled) continue;
 
-  for (const group of formState) {
-    const questionnaire = (group as Record<string, unknown>)?.questionnaire as
-      | Record<string, unknown>
-      | undefined;
-    const questions = questionnaire?.questions;
-    if (!Array.isArray(questions)) continue;
+      if (q.structured_type) {
+        if (isSupportedStructuredType(q.structured_type)) {
+          fields.push({
+            linkId: q.link_id,
+            label: q.text,
+            type: q.type,
+            structuredType: q.structured_type,
+          });
+        }
+        continue;
+      }
 
-    collectFields(questions as FormQuestion[], fields);
-  }
-
-  return fields;
-}
-
-function collectFields(questions: FormQuestion[], out: FormField[]) {
-  for (const q of questions) {
-    // Skip groups — recurse into their children
-    if (q.type === "group") {
-      if (q.questions) collectFields(q.questions, out);
-      continue;
-    }
-
-    if (
-      q.type === "structured" &&
-      isSupportedStructuredType(q.structured_type)
-    ) {
-      out.push({
-        id: q.id,
+      fields.push({
+        linkId: q.link_id,
         label: q.text,
-        description: q.description,
         type: q.type,
-        structuredType: q.structured_type,
+        ...(q.options?.length && { options: q.options }),
       });
-      continue;
     }
-
-    if ((q as Record<string, unknown>).structured_type) {
-      continue;
-    }
-
-    // Skip date fields — speech extraction doesn't reliably produce valid dates
-    if (q.type === "date" || q.type === "dateTime") {
-      continue;
-    }
-
-    const field: FormField = {
-      id: q.id,
-      label: q.text,
-      description: q.description,
-      type: q.type,
-      unit: q.unit,
-    };
-
-    if (q.answer_option?.length) {
-      field.options = q.answer_option.map((o) => o.display || String(o.value));
-    } else if (q.type === "choice" && q.answer_value_set) {
-      // No fixed option list — the valid answers come from an external
-      // terminology (e.g. SNOMED), resolved later against answer_value_set.
-      field.answerValueSet = q.answer_value_set;
-    }
-
-    out.push(field);
   }
+  return fields;
 }
 
 /** A Medispeak `outputs: [{type: "form", fields}]` field definition. */
@@ -138,20 +77,24 @@ function dedupeLabels(fields: FormField[]): FormField[] {
 /**
  * Build Medispeak's typed field schema from CARE form fields.
  *
- * `key` is the field's LABEL, not its CARE question id: `structured/fill.ts`
- * matches extracted data back onto questions by fuzzy-matching question text
- * against these keys (`findMatchingLabel`), the same way the legacy
- * LLM-prompt pipeline's JSON keys work. An id-keyed result would never match.
+ * `key` is the field's LABEL, not its CARE question link id:
+ * `structured/fill.ts` matches extracted data back onto questions by
+ * fuzzy-matching question text against these keys (`findMatchingLabel`),
+ * the same way the legacy LLM-prompt pipeline's JSON keys work. A
+ * link-id-keyed result would never match.
  */
 export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
   const specs: MedispeakFieldSpec[] = [];
   for (const f of dedupeLabels(fields)) {
     if (f.structuredType) {
-      const description = withHelpText(
-        f,
-        `${getStructuredFieldDescription(f.structuredType, f.label)}; example: ${JSON.stringify(getStructuredFieldExample(f.structuredType))}`,
-      );
-      specs.push({ key: f.label, label: f.label, type: "string", description });
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "string",
+        description: guarded(
+          `${getStructuredFieldDescription(f.structuredType, f.label)}; example: ${JSON.stringify(getStructuredFieldExample(f.structuredType))}`,
+        ),
+      });
       continue;
     }
     if (f.type === "boolean") {
@@ -160,8 +103,7 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         label: f.label,
         type: "single_select",
         enum: ["true", "false", BOOLEAN_NOT_MENTIONED],
-        description: withHelpText(
-          f,
+        description: guarded(
           `Whether the clinician explicitly stated this. Use "${BOOLEAN_NOT_MENTIONED}" if not mentioned — never guess "false".`,
         ),
       });
@@ -173,26 +115,23 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         ),
       );
     } else if (f.type === "decimal" || f.type === "integer") {
-      const key = withUnitSuffix(f.label, f.unit);
-      const unitHint = f.unit?.display || f.unit?.code;
       specs.push({
-        key,
-        label: key,
+        key: f.label,
+        label: f.label,
         type: "number",
-        description: withHelpText(
-          f,
-          `Numeric value only${unitHint ? ` (in ${unitHint})` : ""}. If the ` +
-            'clinician only gave a descriptive term (e.g. "normal", "elevated") ' +
-            `with no number, leave this out and use "${key}_note" instead.`,
+        description: guarded(
+          "Numeric value only. If the clinician only gave a descriptive " +
+            'term (e.g. "normal", "elevated") with no number, leave this ' +
+            `out and use "${f.label}_note" instead.`,
         ),
       });
       specs.push(
         noteSpec(
-          key,
-          `Descriptive/qualitative commentary for "${key}" (e.g. "normal", ` +
-            `"very high", "borderline") if the clinician gave any — whether or ` +
-            'not they also gave a number (e.g. "120, very high" -> number 120, ' +
-            `note "very high"). Only include if explicitly mentioned.`,
+          f.label,
+          `Descriptive/qualitative commentary for "${f.label}" (e.g. ` +
+            '"normal", "very high", "borderline") if the clinician gave ' +
+            "any — whether or not they also gave a number. Only include " +
+            "if explicitly mentioned.",
         ),
       );
     } else if (f.type === "choice" && f.options?.length) {
@@ -201,7 +140,7 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         label: f.label,
         type: "single_select",
         enum: f.options,
-        description: withHelpText(f),
+        description: guarded(),
       });
       specs.push(
         noteSpec(
@@ -210,20 +149,32 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
             "option, if explicitly mentioned.",
         ),
       );
-    } else if (f.type === "choice" && f.answerValueSet) {
-      // Open-ended terminology (SNOMED, etc.) — too large to enumerate, so
-      // ask for a code/display_names object and resolve it via the same
-      // search-and-select valueset lookup used for medication/diagnosis/etc.
+    } else if (f.type === "date") {
       specs.push({
         key: f.label,
         label: f.label,
         type: "string",
-        description: withHelpText(
-          f,
-          `The clinical term the clinician used for "${f.label}", as JSON: ` +
-            '{"code": "<code if known, else empty string>", "display_names": ' +
-            '["<exact term used>", "<a close synonym, if any>"]}. Only ' +
-            "include if explicitly mentioned.",
+        description: guarded(
+          `Output as YYYY-MM-DD only, no time component. ${buildDateContext()}`,
+        ),
+      });
+    } else if (f.type === "dateTime") {
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "string",
+        description: guarded(
+          `Output as an ISO 8601 datetime (YYYY-MM-DDTHH:mm, 24-hour, ` +
+            `optionally with seconds). ${buildDateContext()}`,
+        ),
+      });
+    } else if (f.type === "time") {
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "string",
+        description: guarded(
+          "Output as 24-hour HH:mm (e.g. 15:30 for 3:30 PM), no AM/PM.",
         ),
       });
     } else {
@@ -231,7 +182,7 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         key: f.label,
         label: f.label,
         type: "string",
-        description: withHelpText(f),
+        description: guarded(),
       });
     }
   }
@@ -246,16 +197,6 @@ function guarded(description?: string): string {
   return description
     ? `${description} ${NO_FABRICATION_CLAUSE}`
     : NO_FABRICATION_CLAUSE;
-}
-
-// The CARE question's own help text/description
-function withHelpText(f: FormField, generated?: string): string {
-  const base = f.description
-    ? generated
-      ? `${f.description} ${generated}`
-      : f.description
-    : generated;
-  return guarded(base);
 }
 
 // Free text fields already hold arbitrary commentary in their own value, so
