@@ -2,7 +2,7 @@
 
 > AI-powered clinical documentation (Filly) plugin for the [CARE](https://github.com/ohcnetwork/care_fe) EMR.
 
-`care_filly_fe` is a **Care Frontend plugin** that brings AI **Filly** capabilities to OHCN's EMR. A clinician records a consultation, the audio is transcribed and structured by the [Medispeak](https://medispeak.in) API, and the extracted values are automatically matched and filled into CARE questionnaire forms — saving manual data entry and letting clinicians focus on the patient.
+`care_filly_fe` is a **Care Frontend plugin** that brings AI **Filly** capabilities to OHCN's EMR. A clinician records a consultation, the audio is transcribed and structured by the [Medispeak](https://medispeak.ohc.network) API, and the extracted values are automatically matched and filled into CARE questionnaire forms — saving manual data entry and letting clinicians focus on the patient.
 
 It runs as a **Vite Module Federation remote** loaded by [`care_fe`](https://github.com/ohcnetwork/care_fe) and adds a floating microphone control that records, transcribes, and auto-fills forms.
 
