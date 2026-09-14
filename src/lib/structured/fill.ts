@@ -151,11 +151,13 @@ export function matchNoteToQuestion(
   return text;
 }
 
-// CARE stores a choice response as the option's `value`, not its display
-// label (see ChoiceQuestion.tsx) — Medispeak is prompted with display labels,
-// so its answer must be resolved back to the real stored value. Returns null
-// if it doesn't match any real option (a hallucinated/paraphrased answer),
-// so an invalid choice is never inserted.
+// Medispeak is now prompted with the option's stored `value` as the enum
+// (see buildFieldSpecs in template-builder.ts), so its answer should already
+// be a real value — this still re-validates against answer_option (also
+// matching a legacy display label, in case an older cached template or a
+// non-conforming answer slips through), and returns null for anything that
+// doesn't match any real option, so a hallucinated/paraphrased answer is
+// never inserted.
 function resolveChoiceValue(
   question: Record<string, unknown>,
   matchedValue: string,
@@ -445,9 +447,9 @@ function resolveTriggerValues(
       extracted !== null &&
       extracted.toLowerCase() !== BOOLEAN_NOT_MENTIONED
     ) {
-      // A choice trigger's freshly extracted text is a display label —
-      // enable_when.answer is written against the stored answer_option
-      // value, same reason the main fill path resolves choices too.
+      // A choice trigger's freshly extracted text should already be the
+      // stored answer_option value (see buildFieldSpecs), but is still
+      // resolved/validated the same way the main fill path resolves choices.
       const resolved =
         triggerQuestion.type === "choice"
           ? resolveChoiceValue(triggerQuestion, extracted)

@@ -33,7 +33,7 @@ export interface FormField {
   description?: string;
   type: string;
   structuredType?: SupportedStructuredType;
-  options?: string[];
+  options?: Array<{ value: string; display: string }>;
   answerValueSet?: string;
   unit?: FormUnit;
 }
@@ -105,7 +105,10 @@ function collectFields(questions: FormQuestion[], out: FormField[]) {
     };
 
     if (q.answer_option?.length) {
-      field.options = q.answer_option.map((o) => o.display || String(o.value));
+      field.options = q.answer_option.map((o) => ({
+        value: String(o.value),
+        display: o.display || String(o.value),
+      }));
     } else if (q.type === "choice" && q.answer_value_set) {
       // No fixed option list — the valid answers come from an external
       // terminology (e.g. SNOMED), resolved later against answer_value_set.
@@ -196,12 +199,18 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         ),
       );
     } else if (f.type === "choice" && f.options?.length) {
+      const optionsHint = f.options
+        .map((o) => `"${o.value}" (${o.display})`)
+        .join(", ");
       specs.push({
         key: f.label,
         label: f.label,
         type: "single_select",
-        enum: f.options,
-        description: withHelpText(f),
+        enum: f.options.map((o) => o.value),
+        description: withHelpText(
+          f,
+          `Return the exact value matching the clinician's answer: ${optionsHint}.`,
+        ),
       });
       specs.push(
         noteSpec(
