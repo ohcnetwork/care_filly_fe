@@ -100,11 +100,6 @@ function normalizeCriticality(
   return ALLERGY_CRITICALITY_SYNONYMS[normalized] ?? "unable_to_assess";
 }
 
-// care_fe's clinicalRecordSchema (`useFillActions.ts`) requires an exact,
-// case-sensitive match against these — mirrored here since the two repos
-// build separately and share no types. A model-emitted value that misses
-// (wrong case, a synonym, "unknown") would otherwise reach that schema
-// unvalidated and fail the whole record, not just this field.
 const DIAGNOSIS_CLINICAL_STATUS = [
   "active",
   "recurrence",
@@ -263,8 +258,6 @@ export async function deserializeDiagnosis(
             DIAGNOSIS_VERIFICATION_STATUS,
             "confirmed",
           ),
-          // Diagnosis severity is nullable (unlike symptom's) — an unset or
-          // unrecognized value clears it rather than guessing.
           severity: row.severity
             ? (DIAGNOSIS_SEVERITY.find(
                 (option) =>

@@ -25,14 +25,7 @@ import {
   isSupportedStructuredType,
 } from "./types";
 
-/** A question type the `questionnaire.response.set` Scribe action can
- *  write with a plain scalar — see `coerceResponseValue` in care_fe's
- *  `useFillActions.ts`. A value-set-coded choice has no action to write
- *  through yet, and `questionnaire.forms.list` doesn't expose enough to
- *  tell one apart from a plain fixed-option choice, so an unmatchable
- *  write is left to the host to reject rather than guessed at here.
- *  Structured questions go through the same action too, but with one
- *  request-object entry per row instead of a scalar — see FieldFill. */
+/** Refer to `useFillActions.ts` and see `coerceResponseValue` in care_fe. */
 const WRITABLE_TYPES = new Set([
   "string",
   "text",
@@ -46,32 +39,19 @@ const WRITABLE_TYPES = new Set([
   "dateTime",
 ]);
 
-/** 24-hour "HH:mm", optionally with seconds — what care_fe's own
- *  `TIME_PATTERN` requires; matches `<input type="time">`. */
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 
-/** "3:30 PM"/"3:30pm" — the shape a spoken answer is likeliest to come
- *  back as even when the field spec asks for 24-hour time. */
 const TIME_12H_PATTERN = /^(\d{1,2}):([0-5]\d)(?::[0-5]\d)?\s*(am|pm)$/i;
 
-/** care_fe's `date` coercion requires an exact "YYYY-MM-DD" (`z.iso.date()`)
- *  — reuses the same relative/absolute date parsing the structured onset
- *  fields already trust, so a plain date question gets the same leniency. */
 function normalizeDateAnswer(raw: string): string | null {
   return validateDate(raw);
 }
 
-/** care_fe's `dateTime` coercion accepts any ISO datetime, with or without
- *  an offset — `Date#toISOString()` (always "Z"-suffixed) satisfies that
- *  directly, so this only needs to confirm `raw` parses to a real instant. */
 function normalizeDateTimeAnswer(raw: string): string | null {
   const date = new Date(raw.trim());
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-/** care_fe's `time` coercion is a strict 24-hour regex with no AM/PM
- *  leniency — normalize the common 12-hour form here so a well-formed
- *  spoken answer isn't rejected on a formatting technicality alone. */
 function normalizeTimeAnswer(raw: string): string | null {
   const trimmed = raw.trim();
   if (TIME_PATTERN.test(trimmed)) return trimmed;
@@ -85,10 +65,7 @@ function normalizeTimeAnswer(raw: string): string | null {
   return `${String(hours).padStart(2, "0")}:${match[2]}`;
 }
 
-/** Normalizes a matched date/dateTime/time answer into what care_fe's
- *  `coerceResponseValue` requires; unparseable input is passed through
- *  as-is so the host still gets a chance to reject it with its own
- *  specific error instead of the match silently disappearing here. */
+/** Normalizes a matched date/dateTime/time answer into what care_fe's */
 function normalizeTemporalAnswer(questionType: string, raw: string): string {
   const normalized =
     questionType === "date"
@@ -103,20 +80,11 @@ function normalizeTemporalAnswer(questionType: string, raw: string): string {
 
 export interface FieldFill {
   questionnaireId: string;
-  /** The only stable identifier the Scribe action contract exposes — no
-   *  question id or DOM anchor reaches this side of the plugin boundary. */
   linkId: string;
   questionType: string;
   label: string;
-  /** Set for a structured question — mutually exclusive with matchedValue.
-   *  `questionnaire.response.set` replaces a structured question's answer
-   *  wholesale, so `structuredEntries` always carries the FULL desired
-   *  list (the question's existing rows, from `forms.list`, plus the
-   *  newly extracted ones) rather than just what's new. */
   structuredType?: SupportedStructuredType;
   structuredEntries?: unknown[];
-  /** How many of `structuredEntries` are new this session — for display
-   *  only; the write always carries the full list above. */
   structuredNewCount?: number;
   matchedValue: string | number | boolean | null;
   matchedNote: string | null;
@@ -262,10 +230,6 @@ export function parseStructuredRaw(raw: unknown): unknown[] | null {
 
     let result = tryParseJSON(trimmed);
     if (result === undefined) {
-      // Some models over-escape a JSON-string field, embedding literal
-      // backslash-quotes in the value itself (e.g. `[{\"code\":...}]`)
-      // instead of returning plain JSON text. Unescaping once recovers it;
-      // if that still doesn't parse, this really isn't structured data.
       result = tryParseJSON(trimmed.replace(/\\"/g, '"'));
     }
     if (result === undefined) return null;
@@ -296,9 +260,6 @@ export async function collectFieldsToFill(
     complaintText: extractComplaintText(data),
   };
 
-  // Collected here instead of resolved inline so their SNOMED/valueset/user
-  // lookups can run concurrently below rather than stacking one question's
-  // network round-trips behind another's.
   const structuredCandidates: StructuredCandidate[] = [];
 
   for (const form of forms) {
@@ -338,10 +299,6 @@ export async function collectFieldsToFill(
             : rawValue;
 
       if (matchedValue === null) {
-        // A note-only match would otherwise ask the host to overwrite an
-        // already-answered question's values with an empty array just to
-        // carry the note — skip rather than risk clobbering a real answer
-        // this action contract gives no way to read back and preserve.
         if (matchedNote === null || question.answered) continue;
       }
 
@@ -359,10 +316,6 @@ export async function collectFieldsToFill(
   const structuredResults = await Promise.all(
     structuredCandidates.map(async (candidate) => {
       try {
-        // The merge/dedupe-by-code logic already lives in each deserializer
-        // (`[...current, ...dedupeByCode(parsed, currentCodes, ...)]`) — now
-        // that `forms.list` exposes existing rows, passing them as `current`
-        // makes that return value the exact full list this write needs.
         const {
           data: entries,
           errors,
@@ -395,22 +348,12 @@ export async function collectFieldsToFill(
     const { candidate, entries, errors, supplementalNote } = result;
     const mergedEntries = Array.isArray(entries) ? entries : [];
     const lengthDiff = mergedEntries.length - candidate.existingEntries.length;
-    // Most types append (the merged list only ever grows), but a
-    // single-value type like time_of_death REPLACES its one entry in
-    // place — same length, different content — so a length-only check
-    // would miss a corrected value and silently drop the write.
     const contentChanged =
       lengthDiff !== 0 ||
       JSON.stringify(mergedEntries) !==
         JSON.stringify(candidate.existingEntries);
 
     if (!contentChanged && !supplementalNote) {
-      // Extraction matched this question but every parsed row deduped away
-      // against what's already recorded — say so instead of vanishing, or
-      // the clinician has no way to tell Filly heard it at all. Still tags
-      // `structuredType` (with no `structuredEntries`) so the apply loop's
-      // own skip check recognizes this as a display-only row and never
-      // sends an empty `values` that would wipe the question's answer.
       fieldsToFill.push({
         questionnaireId: candidate.questionnaireId,
         linkId: candidate.linkId,
@@ -501,13 +444,6 @@ export function buildSetResponseInput(field: FieldFill): SetResponseInput {
   };
 }
 
-// The host's `values` schema validates each structured entry with
-// `z.record(z.string(), z.json())` — a key present with value `undefined`
-// (e.g. an optional `note` a deserializer left unset, or an unresolved
-// `code.system` from a locally-defined valueset concept) fails that check
-// for the WHOLE entry, not just the one key. A JSON round-trip drops any
-// such key exactly the way `JSON.stringify` already treats it everywhere
-// else in the app, so the entry matches what the host will accept.
 function sanitizeStructuredEntries(
   entries: unknown[],
 ): Record<string, unknown>[] {
@@ -564,9 +500,6 @@ interface OtherInvestigationQuestion {
   text: string;
 }
 
-/** Best free-text question to carry an investigation's leftover note,
- *  scored by how strongly its own label reads as an "other" catch-all —
- *  `forms.list` is already flat, so no tree-walk is needed here. */
 function findOtherInvestigationQuestion(
   forms: ScribeFormSummary[],
   excludeLinkId: string,

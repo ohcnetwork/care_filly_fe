@@ -15,6 +15,8 @@ export interface FormField {
   label: string;
   type: string;
   options?: string[];
+  /** The CARE question's own help text, if the form author set one. */
+  description?: string;
   /** Set for a structured question — mutually exclusive with `options`. */
   structuredType?: SupportedStructuredType;
 }
@@ -39,6 +41,7 @@ export function extractFormFields(forms: ScribeFormSummary[]): FormField[] {
             label: q.text,
             type: q.type,
             structuredType: q.structured_type,
+            ...(q.description && { description: q.description }),
           });
         }
         continue;
@@ -49,6 +52,7 @@ export function extractFormFields(forms: ScribeFormSummary[]): FormField[] {
         label: q.text,
         type: q.type,
         ...(q.options?.length && { options: q.options }),
+        ...(q.description && { description: q.description }),
       });
     }
   }
@@ -91,7 +95,8 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         key: f.label,
         label: f.label,
         type: "string",
-        description: guarded(
+        description: withHelpText(
+          f,
           `${getStructuredFieldDescription(f.structuredType, f.label)}; example: ${JSON.stringify(getStructuredFieldExample(f.structuredType))}`,
         ),
       });
@@ -103,7 +108,8 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         label: f.label,
         type: "single_select",
         enum: ["true", "false", BOOLEAN_NOT_MENTIONED],
-        description: guarded(
+        description: withHelpText(
+          f,
           `Whether the clinician explicitly stated this. Use "${BOOLEAN_NOT_MENTIONED}" if not mentioned — never guess "false".`,
         ),
       });
@@ -119,7 +125,8 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         key: f.label,
         label: f.label,
         type: "number",
-        description: guarded(
+        description: withHelpText(
+          f,
           "Numeric value only. If the clinician only gave a descriptive " +
             'term (e.g. "normal", "elevated") with no number, leave this ' +
             `out and use "${f.label}_note" instead.`,
@@ -140,7 +147,7 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         label: f.label,
         type: "single_select",
         enum: f.options,
-        description: guarded(),
+        description: withHelpText(f),
       });
       specs.push(
         noteSpec(
@@ -154,7 +161,8 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         key: f.label,
         label: f.label,
         type: "string",
-        description: guarded(
+        description: withHelpText(
+          f,
           `Output as YYYY-MM-DD only, no time component. ${buildDateContext()}`,
         ),
       });
@@ -163,7 +171,8 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         key: f.label,
         label: f.label,
         type: "string",
-        description: guarded(
+        description: withHelpText(
+          f,
           `Output as an ISO 8601 datetime (YYYY-MM-DDTHH:mm, 24-hour, ` +
             `optionally with seconds). ${buildDateContext()}`,
         ),
@@ -173,7 +182,8 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         key: f.label,
         label: f.label,
         type: "string",
-        description: guarded(
+        description: withHelpText(
+          f,
           "Output as 24-hour HH:mm (e.g. 15:30 for 3:30 PM), no AM/PM.",
         ),
       });
@@ -182,7 +192,7 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         key: f.label,
         label: f.label,
         type: "string",
-        description: guarded(),
+        description: withHelpText(f),
       });
     }
   }
@@ -197,6 +207,16 @@ function guarded(description?: string): string {
   return description
     ? `${description} ${NO_FABRICATION_CLAUSE}`
     : NO_FABRICATION_CLAUSE;
+}
+
+// The CARE question's own help text/description
+function withHelpText(f: FormField, generated?: string): string {
+  const base = f.description
+    ? generated
+      ? `${f.description} ${generated}`
+      : f.description
+    : generated;
+  return guarded(base);
 }
 
 // Free text fields already hold arbitrary commentary in their own value, so

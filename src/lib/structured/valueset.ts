@@ -16,12 +16,6 @@ interface ValueSetExpandResult {
   >;
 }
 
-/**
- * The backend resolves a bare slug to one of possibly several valuesets
- * sharing it (core vs. facility-overridden) — `expand_slug` disambiguates
- * by `facility`, unlike the plain `{id}/expand/` route (which needs the
- * valueset's own UUID, not its slug, and has no facility context at all).
- */
 export async function expandValueSet(
   slug: string,
   search: string,

@@ -219,9 +219,6 @@ export async function searchActivityDefinition(
   return pickBestActivityDefinition([...seen.values()], queries);
 }
 
-/** No server-side name search — the facility's schedulable-user list is
- *  small enough to fetch whole and match client-side, same as the other
- *  lookups above. */
 export async function getSchedulableUsers(
   facilityId: string,
 ): Promise<CareUserMinimal[]> {
@@ -271,7 +268,6 @@ export async function getSlotsForDay(
   }
 }
 
-/** "kind" locations are schedulable service categories, not physical bed/room instances. */
 export async function getLocations(
   facilityId: string,
   name?: string,
@@ -317,4 +313,3 @@ export async function getHealthcareServices(
     return [];
   }
 }
-

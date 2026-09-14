@@ -46,8 +46,6 @@ import { useMicrophoneDevices } from "@/hooks/useMicrophoneDevices";
 import { useTranslation } from "@/hooks/useTranslation";
 
 interface FillyControllerProps {
-  /** The Scribe action contract care_fe's fill page hands us — undefined
-   *  (never passed) outside a questionnaire fill session. */
   actions?: ScribeActionDescriptor[];
   invoke?: ScribeInvoke;
 }
@@ -445,8 +443,6 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
 
         fieldsToFill.forEach((field, index) => {
           const timeoutId = setTimeout(() => {
-            // A structured field with nothing resolved (extraction-only
-            // warning row) has nothing to write — just surface it.
             if (field.structuredType && field.structuredEntries === undefined) {
               highlightFieldByLabel(field.label, !!field.error);
               setFilledCount(index + 1);
@@ -465,6 +461,15 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
               }
               highlightFieldByLabel(field.label, !outcome.ok);
               setFilledCount(index + 1);
+              if (outcome.ok && field.structuredType === "service_request") {
+                expandServiceRequestRows(field.label, field.structuredEntries);
+              }
+              if (outcome.ok && field.structuredType === "medication_request") {
+                revealMedicationAdvancedFields(
+                  field.label,
+                  field.structuredEntries,
+                );
+              }
             });
           }, index * FIELD_FILL_DELAY_MS);
 
@@ -1275,18 +1280,10 @@ function AiPulse() {
 
 // --- Form fill utilities ---
 
-// The Scribe action contract only exposes a question's link_id, not its
-// question id — and the renderer's DOM anchor (`data-question-id`) is
-// keyed by question id (see `QuestionBlock.tsx`/`SectionCard.tsx` in
-// care_fe). With no shared identifier to look up, the best this side can
-// do is match the question's own label text against the container whose
-// visible text is the closest (shortest) match — a leaf question's own
-// container, not a large enclosing group that merely contains it too.
-function highlightFieldByLabel(label: string, isError = false): void {
+function findQuestionContainerByLabel(label: string): HTMLElement | null {
   const trimmed = label.trim();
-  if (!trimmed) return;
+  if (!trimmed) return null;
 
-  const HIGHLIGHT_CLASS = isError ? "filly-highlight-error" : "filly-highlight";
   const nodes = document.querySelectorAll<HTMLElement>("[data-question-id]");
   let target: HTMLElement | null = null;
   for (const node of nodes) {
@@ -1296,14 +1293,87 @@ function highlightFieldByLabel(label: string, isError = false): void {
       target = node;
     }
   }
+  return target;
+}
+
+function highlightFieldByLabel(label: string, isError = false): void {
+  const target = findQuestionContainerByLabel(label);
   if (!target) return;
 
+  const HIGHLIGHT_CLASS = isError ? "filly-highlight-error" : "filly-highlight";
   target.classList.remove("filly-highlight", "filly-highlight-error");
   void target.offsetWidth;
   target.classList.add(HIGHLIGHT_CLASS);
   target.scrollIntoView({ behavior: "smooth", block: "center" });
 
-  setTimeout(() => target.classList.remove(HIGHLIGHT_CLASS), 3000);
+  setTimeout(() => target.classList.remove(HIGHLIGHT_CLASS), 2000);
+}
+
+function expandServiceRequestRows(
+  label: string,
+  structuredValue: unknown,
+): void {
+  if (!Array.isArray(structuredValue) || !structuredValue.length) return;
+
+  setTimeout(() => {
+    const container = findQuestionContainerByLabel(label);
+    if (!container) return;
+
+    for (const item of structuredValue) {
+      const sr = (item as Record<string, unknown> | null)?.service_request as
+        | Record<string, unknown>
+        | undefined;
+      const title = typeof sr?.title === "string" ? sr.title : undefined;
+      const hasExtraDetails = !!(
+        sr?.body_site ||
+        (typeof sr?.patient_instruction === "string" &&
+          sr.patient_instruction.trim()) ||
+        (typeof sr?.note === "string" && sr.note.trim())
+      );
+      if (!title || !hasExtraDetails) continue;
+
+      const trigger = Array.from(
+        container.querySelectorAll<HTMLButtonElement>(
+          '[data-slot="collapsible-trigger"][data-state="closed"]',
+        ),
+      ).find((btn) => btn.textContent?.includes(title));
+      trigger?.click();
+    }
+  }, 100);
+}
+
+// expand the medication request advanced fields if any of the dosage instructions have additional instructions,
+// site, route, or method specified
+function revealMedicationAdvancedFields(
+  label: string,
+  structuredValue: unknown,
+): void {
+  if (!Array.isArray(structuredValue) || !structuredValue.length) return;
+
+  const hasAdvancedData = structuredValue.some((medication) => {
+    const dosageInstruction = (medication as Record<string, unknown> | null)
+      ?.dosage_instruction;
+    if (!Array.isArray(dosageInstruction)) return false;
+    return dosageInstruction.some((di: Record<string, unknown>) => {
+      const additionalInstruction = di?.additional_instruction;
+      return (
+        (Array.isArray(additionalInstruction) &&
+          additionalInstruction.length > 0) ||
+        !!di?.site ||
+        !!di?.route ||
+        !!di?.method
+      );
+    });
+  });
+  if (!hasAdvancedData) return;
+
+  setTimeout(() => {
+    const container = findQuestionContainerByLabel(label);
+    const toggle = (container ?? document).querySelector<HTMLElement>(
+      '[title="Show Advanced Fields"]',
+    );
+    toggle?.click();
+  }, 100);
 }
 
 export default FillyController;
