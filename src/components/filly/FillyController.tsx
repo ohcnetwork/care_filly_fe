@@ -26,10 +26,15 @@ import {
 } from "@/lib/fab-position";
 import {
   type FieldFill,
-  applyFieldToState,
+  buildSetResponseInput,
   collectFieldsToFill,
 } from "@/lib/structured/fill";
-import type { FillyResult } from "@/lib/types/filly";
+import type {
+  FillyResult,
+  ScribeActionDescriptor,
+  ScribeFormSummary,
+  ScribeInvoke,
+} from "@/lib/types/filly";
 import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
@@ -41,8 +46,8 @@ import { useMicrophoneDevices } from "@/hooks/useMicrophoneDevices";
 import { useTranslation } from "@/hooks/useTranslation";
 
 interface FillyControllerProps {
-  formState?: unknown;
-  setFormState?: (fn: (state: unknown) => unknown) => void;
+  actions?: ScribeActionDescriptor[];
+  invoke?: ScribeInvoke;
 }
 
 const FIELD_FILL_DELAY_MS = 500;
@@ -349,10 +354,7 @@ export function FillyController(props: FillyControllerProps) {
   );
 }
 
-function FillyControllerInner({
-  formState,
-  setFormState,
-}: FillyControllerProps) {
+function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
@@ -401,7 +403,7 @@ function FillyControllerInner({
 
   const applyResults = useCallback(
     async (result: FillyResult) => {
-      if (!setFormState || !formState) return;
+      if (!invoke || !actions?.length) return;
       if (!result.structuredData) {
         console.warn("[Filly] No structured data to fill");
         return;
@@ -411,10 +413,18 @@ function FillyControllerInner({
       setIsResolvingFields(true);
 
       try {
+        const formsResult = await invoke("questionnaire.forms.list", {});
+        if (!formsResult.ok) {
+          console.error(
+            "[Filly] Could not read the open form:",
+            formsResult.error,
+          );
+          return;
+        }
+        const forms = (formsResult.data ?? []) as ScribeFormSummary[];
         const fieldsToFill = await collectFieldsToFill(
-          formState,
+          forms,
           result.structuredData,
-          result.transcript,
         );
 
         if (import.meta.env.DEV) {
@@ -433,17 +443,34 @@ function FillyControllerInner({
 
         fieldsToFill.forEach((field, index) => {
           const timeoutId = setTimeout(() => {
-            setFormState((currentState: unknown) =>
-              applyFieldToState(currentState, field),
-            );
-            highlightField(field.qId);
-            setFilledCount(index + 1);
-            if (field.structuredType === "service_request") {
-              expandServiceRequestRows(field.qId, field.structuredValue);
+            if (field.structuredType && field.structuredEntries === undefined) {
+              highlightFieldByLabel(field.label, !!field.error);
+              setFilledCount(index + 1);
+              return;
             }
-            if (field.structuredType === "medication_request") {
-              revealMedicationAdvancedFields(field.qId, field.structuredValue);
-            }
+            void invoke(
+              "questionnaire.response.set",
+              buildSetResponseInput(field),
+            ).then((outcome) => {
+              if (!outcome.ok) {
+                setAppliedFields((current) =>
+                  current.map((f, i) =>
+                    i === index ? { ...f, error: outcome.error } : f,
+                  ),
+                );
+              }
+              highlightFieldByLabel(field.label, !outcome.ok);
+              setFilledCount(index + 1);
+              if (outcome.ok && field.structuredType === "service_request") {
+                expandServiceRequestRows(field.label, field.structuredEntries);
+              }
+              if (outcome.ok && field.structuredType === "medication_request") {
+                revealMedicationAdvancedFields(
+                  field.label,
+                  field.structuredEntries,
+                );
+              }
+            });
           }, index * FIELD_FILL_DELAY_MS);
 
           fillTimeoutsRef.current.push(timeoutId);
@@ -455,13 +482,13 @@ function FillyControllerInner({
         setIsResolvingFields(false);
       }
     },
-    [formState, setFormState],
+    [actions, invoke],
   );
 
   const [liveTranscript, setLiveTranscript] = useState<string>("");
 
   const filly = useFilly({
-    formState,
+    invoke,
     onTranscript: (transcript) => {
       setLiveTranscript(transcript);
     },
@@ -1067,9 +1094,11 @@ function FillyControllerInner({
                   ) : (
                     appliedFields.map((field, i) => (
                       <button
-                        key={`${field.qId}-${i}`}
+                        key={`${field.linkId}-${i}`}
                         type="button"
-                        onClick={() => highlightField(field.qId, !!field.error)}
+                        onClick={() =>
+                          highlightFieldByLabel(field.label, !!field.error)
+                        }
                         title={t("go_to_field")}
                         className={cn(
                           "flex w-full items-center justify-between rounded px-2 py-1 text-left transition-colors",
@@ -1087,16 +1116,11 @@ function FillyControllerInner({
                           </span>
                         ) : (
                           <span className="text-xs font-medium text-gray-900">
-                            {field.structuredValue
+                            {field.structuredEntries
                               ? t("n_filled", {
-                                  n: Array.isArray(field.structuredValue)
-                                    ? field.structuredValue.length
-                                    : 1,
+                                  n: field.structuredNewCount ?? 0,
                                 })
-                              : field.coding
-                                ? field.coding.display
-                                : (field.matchedValue ??
-                                  t("n_filled", { n: 1 }))}
+                              : (field.matchedValue ?? t("n_filled", { n: 1 }))}
                             {field.matchedNote && (
                               <span className="ml-1 font-normal text-gray-500">
                                 ({field.matchedNote})
@@ -1256,24 +1280,43 @@ function AiPulse() {
 
 // --- Form fill utilities ---
 
-function highlightField(qId: string, isError = false): void {
-  const HIGHLIGHT_CLASS = isError ? "filly-highlight-error" : "filly-highlight";
-  const el = document.getElementById(`question-${qId}`);
-  if (!el) return;
+function findQuestionContainerByLabel(label: string): HTMLElement | null {
+  const trimmed = label.trim();
+  if (!trimmed) return null;
 
-  el.classList.remove("filly-highlight", "filly-highlight-error");
-  void el.offsetWidth;
-  el.classList.add(HIGHLIGHT_CLASS);
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
-
-  setTimeout(() => el.classList.remove(HIGHLIGHT_CLASS), 3000);
+  const nodes = document.querySelectorAll<HTMLElement>("[data-question-id]");
+  let target: HTMLElement | null = null;
+  for (const node of nodes) {
+    const text = node.textContent;
+    if (!text?.includes(trimmed)) continue;
+    if (!target || text.length < (target.textContent?.length ?? Infinity)) {
+      target = node;
+    }
+  }
+  return target;
 }
 
-function expandServiceRequestRows(qId: string, structuredValue: unknown) {
+function highlightFieldByLabel(label: string, isError = false): void {
+  const target = findQuestionContainerByLabel(label);
+  if (!target) return;
+
+  const HIGHLIGHT_CLASS = isError ? "filly-highlight-error" : "filly-highlight";
+  target.classList.remove("filly-highlight", "filly-highlight-error");
+  void target.offsetWidth;
+  target.classList.add(HIGHLIGHT_CLASS);
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  setTimeout(() => target.classList.remove(HIGHLIGHT_CLASS), 2000);
+}
+
+function expandServiceRequestRows(
+  label: string,
+  structuredValue: unknown,
+): void {
   if (!Array.isArray(structuredValue) || !structuredValue.length) return;
 
   setTimeout(() => {
-    const container = document.getElementById(`question-${qId}`);
+    const container = findQuestionContainerByLabel(label);
     if (!container) return;
 
     for (const item of structuredValue) {
@@ -1302,7 +1345,7 @@ function expandServiceRequestRows(qId: string, structuredValue: unknown) {
 // expand the medication request advanced fields if any of the dosage instructions have additional instructions,
 // site, route, or method specified
 function revealMedicationAdvancedFields(
-  qId: string,
+  label: string,
   structuredValue: unknown,
 ): void {
   if (!Array.isArray(structuredValue) || !structuredValue.length) return;
@@ -1325,7 +1368,7 @@ function revealMedicationAdvancedFields(
   if (!hasAdvancedData) return;
 
   setTimeout(() => {
-    const container = document.getElementById(`question-${qId}`);
+    const container = findQuestionContainerByLabel(label);
     const toggle = (container ?? document).querySelector<HTMLElement>(
       '[title="Show Advanced Fields"]',
     );

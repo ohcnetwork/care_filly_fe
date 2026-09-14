@@ -60,6 +60,29 @@ export interface ActivityDefinitionRead {
   diagnostic_report_codes?: Code[];
 }
 
+export interface TokenSlotRead {
+  id: string;
+  start_datetime: string;
+  end_datetime: string;
+  allocated: number;
+  availability: { tokens_per_slot: number };
+}
+
+export type SchedulableResourceType =
+  | "practitioner"
+  | "location"
+  | "healthcare_service";
+
+export interface LocationMinimal {
+  id: string;
+  name: string;
+}
+
+export interface HealthcareServiceMinimal {
+  id: string;
+  name: string;
+}
+
 export async function getCurrentUser(): Promise<CareUserMinimal | null> {
   const baseUrl = window.CARE_API_URL;
   if (!baseUrl) return null;
@@ -194,4 +217,99 @@ export async function searchActivityDefinition(
   }
 
   return pickBestActivityDefinition([...seen.values()], queries);
+}
+
+export async function getSchedulableUsers(
+  facilityId: string,
+): Promise<CareUserMinimal[]> {
+  const baseUrl = window.CARE_API_URL;
+  if (!baseUrl) return [];
+
+  try {
+    const res = await fetch(
+      `${baseUrl}/api/v1/facility/${facilityId}/appointments/available_users/`,
+      { headers: getHeaders() },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as { users: CareUserMinimal[] };
+    return data.users ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getSlotsForDay(
+  facilityId: string,
+  resourceType: SchedulableResourceType,
+  resourceId: string,
+  day: string,
+): Promise<TokenSlotRead[]> {
+  const baseUrl = window.CARE_API_URL;
+  if (!baseUrl) return [];
+
+  try {
+    const res = await fetch(
+      `${baseUrl}/api/v1/facility/${facilityId}/slots/get_slots_for_day/`,
+      {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({
+          resource_type: resourceType,
+          resource_id: resourceId,
+          day,
+        }),
+      },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as { results: TokenSlotRead[] };
+    return data.results ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getLocations(
+  facilityId: string,
+  name?: string,
+): Promise<LocationMinimal[]> {
+  const baseUrl = window.CARE_API_URL;
+  if (!baseUrl) return [];
+
+  const url = new URL(`${baseUrl}/api/v1/facility/${facilityId}/location/`);
+  url.searchParams.set("mode", "kind");
+  if (name?.trim()) url.searchParams.set("name", name.trim());
+
+  try {
+    const res = await fetch(url.toString(), { headers: getHeaders() });
+    if (!res.ok) return [];
+    const data = (await res.json()) as PaginatedResponse<LocationMinimal>;
+    return data.results ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getHealthcareServices(
+  facilityId: string,
+  name?: string,
+): Promise<HealthcareServiceMinimal[]> {
+  const baseUrl = window.CARE_API_URL;
+  if (!baseUrl) return [];
+
+  const url = new URL(
+    `${baseUrl}/api/v1/facility/${facilityId}/healthcare_service/`,
+  );
+  url.searchParams.set("internal_type", "scheduling");
+  url.searchParams.set("limit", "50");
+  if (name?.trim()) url.searchParams.set("name", name.trim());
+
+  try {
+    const res = await fetch(url.toString(), { headers: getHeaders() });
+    if (!res.ok) return [];
+    const data =
+      (await res.json()) as PaginatedResponse<HealthcareServiceMinimal>;
+    return data.results ?? [];
+  } catch {
+    return [];
+  }
 }

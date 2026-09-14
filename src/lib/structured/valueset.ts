@@ -1,5 +1,6 @@
 import { getHeaders } from "@/lib/request";
 
+import { getFacilityIdFromUrl } from "./care-api";
 import { buildMedicationSearchQueries } from "./medication-search";
 import type { Code } from "./types";
 
@@ -16,7 +17,7 @@ interface ValueSetExpandResult {
 }
 
 export async function expandValueSet(
-  system: string,
+  slug: string,
   search: string,
   count = 10,
 ): Promise<ValueSetExpandResult["results"]> {
@@ -26,10 +27,16 @@ export async function expandValueSet(
     return [];
   }
 
-  const res = await fetch(`${baseUrl}/api/v1/valueset/${system}/expand/`, {
+  const facility = getFacilityIdFromUrl();
+  const res = await fetch(`${baseUrl}/api/v1/valueset/expand_slug/`, {
     method: "POST",
     headers: getHeaders(),
-    body: JSON.stringify({ search, count }),
+    body: JSON.stringify({
+      slug,
+      search,
+      count,
+      ...(facility && { facility }),
+    }),
   });
 
   if (!res.ok) return [];

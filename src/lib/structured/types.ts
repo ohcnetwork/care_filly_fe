@@ -11,7 +11,8 @@ export type SupportedStructuredType =
   | "medication_statement"
   | "medication_request"
   | "service_request"
-  | "time_of_death";
+  | "time_of_death"
+  | "appointment";
 
 export const SUPPORTED_STRUCTURED_TYPES: SupportedStructuredType[] = [
   "symptom",
@@ -21,6 +22,7 @@ export const SUPPORTED_STRUCTURED_TYPES: SupportedStructuredType[] = [
   "medication_request",
   "service_request",
   "time_of_death",
+  "appointment",
 ];
 
 export function isSupportedStructuredType(
