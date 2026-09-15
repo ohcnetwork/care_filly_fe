@@ -18,7 +18,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@ohcnetwork/care-filly-character": "github:ohcnetwork/care_filly_character#ff64798a87d3fa619f06ab32e45648f9902eabc0",
+    "@ohcnetwork/care-filly-character": "github:abhimanyurajeesh/care_filly_character#ff64798a87d3fa619f06ab32e45648f9902eabc0",
     "@radix-ui/react-slot": "^1.2.0",
     "@radix-ui/react-switch": "^1.2.2",
     "@react-three/fiber": "^9.7.0",
