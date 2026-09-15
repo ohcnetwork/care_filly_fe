@@ -4,14 +4,12 @@ import {
   ChevronDown,
   FileText,
   Loader2,
-  Mic,
   Pause,
   Pencil,
   Play,
   RefreshCw,
   RotateCcw,
   Settings2,
-  Sparkles,
   Square,
   X,
 } from "lucide-react";
@@ -33,6 +31,8 @@ import type { FillyResult } from "@/lib/types/filly";
 import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
+
+import { FillyAvatar } from "@/components/filly/FillyAvatar";
 
 import { useFilly } from "@/hooks/useFilly";
 import { useFillyLanguage } from "@/hooks/useFillyLanguage";
@@ -394,6 +394,13 @@ function FillyControllerInner({
     cursor: fabDrag.isDragging ? "grabbing" : undefined,
   } as const;
 
+  // Dragging the FAB counts as interacting with Filly — wakes it from sleep
+  // with a happy bounce instead of leaving it snoozing mid-drag.
+  const [wakeSignal, setWakeSignal] = useState(0);
+  useEffect(() => {
+    if (fabDrag.isDragging) setWakeSignal((c) => c + 1);
+  }, [fabDrag.isDragging]);
+
   const clearFillTimeouts = useCallback(() => {
     fillTimeoutsRef.current.forEach(clearTimeout);
     fillTimeoutsRef.current = [];
@@ -620,6 +627,8 @@ function FillyControllerInner({
   const mins = Math.floor(duration / 60);
   const secs = duration % 60;
   const timeStr = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  const avgBarLevel =
+    barHeights.reduce((sum, h) => sum + h, 0) / Math.max(1, barHeights.length);
 
   // Idle state — floating pill FAB (bottom-right)
   if (filly.status === "idle") {
@@ -633,7 +642,7 @@ function FillyControllerInner({
     return (
       <div
         ref={fabDrag.containerRef}
-        className="filly-pop-in fixed right-4 bottom-2 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-4"
+        className="filly-pop-in fixed right-4 bottom-4 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6"
         style={fabDragStyle}
         onPointerDown={fabDrag.onPointerDown}
         onClickCapture={fabDrag.onClickCapture}
@@ -742,32 +751,26 @@ function FillyControllerInner({
           >
             <Settings2 className="h-4 w-4" />
           </button>
-          <button
-            onClick={handleStart}
-            disabled={filly.isStarting}
-            className={cn(
-              "group relative flex items-center gap-2 overflow-hidden rounded-full py-3 pr-5 pl-4 text-white shadow-lg transition-all",
-              "bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 shadow-primary-700/30",
-              filly.isStarting
-                ? "opacity-90"
-                : "hover:shadow-xl hover:shadow-primary-700/40 hover:brightness-110 active:scale-95",
+          {/* same 64px slot as the recording/paused orb below, so the character
+              doesn't jump position or size once a session starts */}
+          <div className="relative flex h-16 w-16 items-center justify-center">
+            <FillyAvatar
+              status="idle"
+              size={64}
+              interactive={!filly.isStarting}
+              onClick={filly.isStarting ? undefined : handleStart}
+              wakeSignal={wakeSignal}
+              className="drop-shadow-lg"
+            />
+            {filly.isStarting && (
+              <span
+                className="pointer-events-none absolute -right-1 -bottom-1 flex h-5 w-5 items-center justify-center rounded-full bg-white shadow"
+                title={t("starting")}
+              >
+                <Loader2 className="h-3 w-3 animate-spin text-primary-600" />
+              </span>
             )}
-            title={filly.isStarting ? t("starting") : t("start_ai_filly")}
-          >
-            {/* soft rotating glow */}
-            <span className="filly-spin-slow pointer-events-none absolute -inset-16 scale-150 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.35),transparent)] opacity-60" />
-            <span className="relative flex h-6 w-6 items-center justify-center">
-              {filly.isStarting ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Mic className="h-5 w-5" />
-              )}
-            </span>
-            <span className="relative text-sm font-semibold">
-              {filly.isStarting ? t("starting") : t("ai_filly")}
-            </span>
-            <Sparkles className="relative h-4 w-4 opacity-80" />
-          </button>
+          </div>
         </div>
       </div>
     );
@@ -831,7 +834,7 @@ function FillyControllerInner({
             <p className="filly-shimmer-text text-xs font-medium">
               {t(PROCESSING_STEPS[processingStep])}
             </p>
-            <AiPulse />
+            <FillyAvatar status="processing" size={64} interactive={false} />
             {showTranscript && transcriptMinimized && (
               <button
                 onClick={() => setTranscriptMinimized(false)}
@@ -844,9 +847,10 @@ function FillyControllerInner({
           </div>
         )}
 
-        {/* RECORDING — same size/position as processing orb for seamless transition */}
+        {/* RECORDING — character listens; audio level drives its talking/ear animation.
+            Same 64px slot/position as the idle orb above for a seamless transition. */}
         {filly.status === "recording" && (
-          <div className="flex flex-col items-center gap-2 pr-4">
+          <div className="flex flex-col items-center gap-2">
             {/* timer + pause button inline */}
             <div className="flex items-center gap-1.5">
               <span className="filly-shimmer-text text-xs font-medium">
@@ -863,23 +867,17 @@ function FillyControllerInner({
             <button
               onClick={handleStop}
               title={t("stop_and_process")}
-              className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 shadow-lg shadow-primary-700/40 transition-all active:scale-95 hover:shadow-xl hover:shadow-primary-700/50 opacity-85 hover:opacity-100"
+              className="group relative flex h-16 w-16 items-center justify-center rounded-full transition-transform active:scale-95"
             >
-              {/* rotating conic glow */}
-              <span className="filly-spin-slow pointer-events-none absolute -inset-10 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.3),transparent)] opacity-50" />
-              {/* live audio bars — height driven by Web Audio AnalyserNode */}
-              <span className="relative flex h-6 items-center gap-0.5 transition-opacity group-hover:opacity-0">
-                {barHeights.map((h, i) => (
-                  <span
-                    key={i}
-                    className="w-0.5 rounded-full bg-white/90 transition-[height] duration-75"
-                    style={{ height: `${h * 100}%` }}
-                  />
-                ))}
-              </span>
+              <FillyAvatar
+                status="recording"
+                audioLevel={avgBarLevel}
+                size={64}
+                interactive={false}
+              />
               {/* stop icon on hover */}
-              <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                <Square className="h-5 w-5 text-white" />
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full opacity-0 transition-all group-hover:bg-black/10 group-hover:opacity-100">
+                <Square className="h-5 w-5 text-primary-700 drop-shadow" />
               </span>
             </button>
           </div>
@@ -887,7 +885,7 @@ function FillyControllerInner({
 
         {/* PAUSED — resume near timer; stop on orb hover */}
         {filly.status === "paused" && (
-          <div className="flex flex-col items-center gap-2 pr-4">
+          <div className="flex flex-col items-center gap-2">
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-semibold text-amber-500">
                 {timeStr}
@@ -903,10 +901,12 @@ function FillyControllerInner({
             <button
               onClick={handleStop}
               title={t("stop_and_process")}
-              className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 opacity-85 shadow-lg shadow-primary-700/30 transition-all hover:opacity-100 active:scale-95"
+              className="group relative flex h-16 w-16 items-center justify-center rounded-full transition-transform active:scale-95"
             >
-              <Pause className="relative h-6 w-6 text-white transition-opacity group-hover:opacity-0" />
-              <Square className="absolute h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+              <FillyAvatar status="paused" size={64} interactive={false} />
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full opacity-0 transition-all group-hover:bg-black/10 group-hover:opacity-100">
+                <Square className="h-5 w-5 text-primary-700 drop-shadow" />
+              </span>
             </button>
           </div>
         )}
@@ -914,9 +914,7 @@ function FillyControllerInner({
         {/* COMPLETED — success pill */}
         {filly.status === "completed" && (
           <div className="flex items-center gap-2 rounded-full border border-primary-100 bg-white py-2 pr-2 pl-3 shadow-xl">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-white">
-              <CheckCircle2 className="h-4 w-4" />
-            </span>
+            <FillyAvatar status="completed" size={28} interactive={false} />
             <span className="text-sm font-semibold text-primary-800">
               {t("filled_count", { n: filledCount })}
             </span>
@@ -939,7 +937,7 @@ function FillyControllerInner({
         {/* FAILED — error pill */}
         {filly.status === "failed" && (
           <div className="flex items-center gap-2 rounded-full border border-red-100 bg-white py-2 pr-2 pl-3 shadow-xl">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
+            <FillyAvatar status="failed" size={28} interactive={false} />
             <span className="text-sm font-medium text-red-600">
               {t("failed")}
             </span>
@@ -1170,87 +1168,6 @@ function FillyControllerInner({
         </div>
       )}
     </>
-  );
-}
-
-// --- AI animation sub-components ---
-
-/** Premium AI processing indicator — two counter-rotating gradient arc
- *  "comets" around a glowing core. No dependencies, care green palette. */
-function AiPulse() {
-  return (
-    <div className="relative flex h-20 w-20 items-center justify-center">
-      {/* ambient glow */}
-      <span className="filly-glow absolute h-14 w-14 rounded-full bg-primary-400/40 blur-xl" />
-
-      {/* outer arc — slow clockwise comet */}
-      <svg
-        className="filly-spin-slow absolute inset-0 h-full w-full"
-        viewBox="0 0 80 80"
-        fill="none"
-      >
-        <defs>
-          <linearGradient
-            id="filly-arc-outer"
-            gradientUnits="userSpaceOnUse"
-            x1="4"
-            y1="40"
-            x2="76"
-            y2="40"
-          >
-            <stop offset="0%" stopColor="#31c48d" stopOpacity="0" />
-            <stop offset="100%" stopColor="#0d9f6e" stopOpacity="0.9" />
-          </linearGradient>
-        </defs>
-        <circle
-          cx="40"
-          cy="40"
-          r="36"
-          stroke="url(#filly-arc-outer)"
-          strokeWidth="3.5"
-          strokeLinecap="round"
-          strokeDasharray="158 68"
-        />
-      </svg>
-
-      {/* inner arc — faster counter-clockwise comet */}
-      <svg
-        className="absolute inset-2 h-[calc(100%-1rem)] w-[calc(100%-1rem)]"
-        style={{ animation: "filly-spin 2.6s linear infinite reverse" }}
-        viewBox="0 0 64 64"
-        fill="none"
-      >
-        <defs>
-          <linearGradient
-            id="filly-arc-inner"
-            gradientUnits="userSpaceOnUse"
-            x1="4"
-            y1="32"
-            x2="60"
-            y2="32"
-          >
-            <stop offset="0%" stopColor="#84e1bc" stopOpacity="0" />
-            <stop offset="100%" stopColor="#84e1bc" stopOpacity="0.85" />
-          </linearGradient>
-        </defs>
-        <circle
-          cx="32"
-          cy="32"
-          r="28"
-          stroke="url(#filly-arc-inner)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeDasharray="110 66"
-        />
-      </svg>
-
-      {/* blinking blurry star core */}
-      <div className="relative z-10 flex h-8 w-8 items-center justify-center">
-        {/* soft glow behind the star */}
-        <span className="filly-orb absolute h-8 w-8 rounded-full bg-primary-400/50 blur-md" />
-        <Sparkles className="filly-star-blink relative h-5 w-5 text-white drop-shadow-[0_0_6px_#31c48d]" />
-      </div>
-    </div>
   );
 }
 

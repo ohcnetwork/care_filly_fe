@@ -18,8 +18,10 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@ohcnetwork/care-filly-character": "file:../care_filly_character",
     "@radix-ui/react-slot": "^1.2.0",
     "@radix-ui/react-switch": "^1.2.2",
+    "@react-three/fiber": "^9.7.0",
     "@ricky0123/vad-web": "^0.0.24",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/typography": "^0.5.16",
@@ -32,6 +34,7 @@
     "onnxruntime-web": "^1.20.1",
     "react-i18next": "^15.4.1",
     "tailwind-merge": "^3.2.0",
+    "three": "^0.185.1",
     "use-keyboard-shortcut": "^1.1.6"
   },
   "peerDependencies": {
@@ -43,6 +46,7 @@
     "@trivago/prettier-plugin-sort-imports": "^5.2.2",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.2",
+    "@types/three": "^0.185.4",
     "@typescript-eslint/eslint-plugin": "^8.32.1",
     "@typescript-eslint/parser": "^8.32.1",
     "@vitejs/plugin-react": "^4.3.4",
