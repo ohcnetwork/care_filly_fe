@@ -756,7 +756,7 @@ function FillyControllerInner({
           <div className="relative flex h-16 w-16 items-center justify-center">
             <FillyAvatar
               status="idle"
-              size={64}
+              size={70}
               interactive={!filly.isStarting}
               onClick={filly.isStarting ? undefined : handleStart}
               wakeSignal={wakeSignal}
@@ -834,7 +834,7 @@ function FillyControllerInner({
             <p className="filly-shimmer-text text-xs font-medium">
               {t(PROCESSING_STEPS[processingStep])}
             </p>
-            <FillyAvatar status="processing" size={64} interactive={false} />
+            <FillyAvatar status="processing" size={70} interactive={false} />
             {showTranscript && transcriptMinimized && (
               <button
                 onClick={() => setTranscriptMinimized(false)}
@@ -872,7 +872,7 @@ function FillyControllerInner({
               <FillyAvatar
                 status="recording"
                 audioLevel={avgBarLevel}
-                size={64}
+                size={70}
                 interactive={false}
               />
               {/* stop icon on hover */}
@@ -903,7 +903,7 @@ function FillyControllerInner({
               title={t("stop_and_process")}
               className="group relative flex h-16 w-16 items-center justify-center rounded-full transition-transform active:scale-95"
             >
-              <FillyAvatar status="paused" size={64} interactive={false} />
+              <FillyAvatar status="paused" size={70} interactive={false} />
               <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full opacity-0 transition-all group-hover:bg-black/10 group-hover:opacity-100">
                 <Square className="h-5 w-5 text-primary-700 drop-shadow" />
               </span>
