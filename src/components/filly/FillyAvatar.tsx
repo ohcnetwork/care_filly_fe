@@ -44,7 +44,7 @@ export interface FillyAvatarProps {
 /** How long a click's "happy" bounce overrides the mapped status. */
 const HAPPY_BOUNCE_MS = 1600;
 /** Idle with no click for this long → falls asleep. */
-const IDLE_SLEEP_MS = 3000;
+const IDLE_SLEEP_MS = 10000;
 
 /** Mirrors the light rig baked into the package's own `<FillyScene>` (see
  *  `src/react/FillyScene.tsx` there) so the vanilla render matches it. */
@@ -212,11 +212,14 @@ export function FillyAvatar({
           targetState = override.state;
         } else {
           if (override.state) overrideRef.current = { state: null, until: 0 };
-          if (
-            live.status === "idle" &&
-            t - lastInteractionRef.current > IDLE_SLEEP_MS
-          ) {
+          const stale = t - lastInteractionRef.current > IDLE_SLEEP_MS;
+          if (stale && live.status === "idle") {
             targetState = "sleepy";
+          } else if (
+            stale &&
+            (live.status === "completed" || live.status === "failed")
+          ) {
+            targetState = "idle";
           }
         }
         animator.setState(targetState);
@@ -251,6 +254,11 @@ export function FillyAvatar({
     onClick?.();
   };
 
+  const handlePointerEnter = () => {
+    if (!interactive) return;
+    wake();
+  };
+
   return (
     <div
       ref={wrapperRef}
@@ -264,6 +272,7 @@ export function FillyAvatar({
         cursor: interactive && onClick ? "pointer" : undefined,
       }}
       onClick={interactive ? handleClick : undefined}
+      onPointerEnter={interactive ? handlePointerEnter : undefined}
     >
       <canvas ref={canvasRef} className="h-full w-full" />
     </div>

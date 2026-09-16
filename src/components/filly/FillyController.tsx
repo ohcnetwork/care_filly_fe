@@ -401,6 +401,10 @@ function FillyControllerInner({
     if (fabDrag.isDragging) setWakeSignal((c) => c + 1);
   }, [fabDrag.isDragging]);
 
+  // Hovering the stop button while recording/paused swaps Filly's face to a
+  // "surprised" reaction instead of covering it with a dark overlay + icon.
+  const [stopHover, setStopHover] = useState(false);
+
   const clearFillTimeouts = useCallback(() => {
     fillTimeoutsRef.current.forEach(clearTimeout);
     fillTimeoutsRef.current = [];
@@ -485,6 +489,14 @@ function FillyControllerInner({
   useEffect(() => {
     if (filly.status === "completed") {
       setExpanded(true);
+    }
+  }, [filly.status]);
+
+  // Reset the stop-hover face override once we leave recording/paused (e.g.
+  // a click unmounts the button mid-hover, before mouseleave can fire).
+  useEffect(() => {
+    if (filly.status !== "recording" && filly.status !== "paused") {
+      setStopHover(false);
     }
   }, [filly.status]);
 
@@ -866,19 +878,23 @@ function FillyControllerInner({
             </div>
             <button
               onClick={handleStop}
+              onMouseEnter={() => setStopHover(true)}
+              onMouseLeave={() => setStopHover(false)}
               title={t("stop_and_process")}
-              className="group relative flex h-16 w-16 items-center justify-center rounded-full transition-transform active:scale-95"
+              className="relative flex h-16 w-16 items-center justify-center rounded-full transition-transform active:scale-95"
             >
               <FillyAvatar
-                status="recording"
+                status={stopHover ? "failed" : "recording"}
                 audioLevel={avgBarLevel}
                 size={70}
                 interactive={false}
               />
-              {/* stop icon on hover */}
-              <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full opacity-0 transition-all group-hover:bg-black/10 group-hover:opacity-100">
-                <Square className="h-5 w-5 text-primary-700 drop-shadow" />
-              </span>
+              {/* small stop badge on hover, instead of covering Filly's face */}
+              {stopHover && (
+                <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow">
+                  <Square className="h-3 w-3 text-primary-700" />
+                </span>
+              )}
             </button>
           </div>
         )}
@@ -900,13 +916,21 @@ function FillyControllerInner({
             </div>
             <button
               onClick={handleStop}
+              onMouseEnter={() => setStopHover(true)}
+              onMouseLeave={() => setStopHover(false)}
               title={t("stop_and_process")}
-              className="group relative flex h-16 w-16 items-center justify-center rounded-full transition-transform active:scale-95"
+              className="relative flex h-16 w-16 items-center justify-center rounded-full transition-transform active:scale-95"
             >
-              <FillyAvatar status="paused" size={70} interactive={false} />
-              <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full opacity-0 transition-all group-hover:bg-black/10 group-hover:opacity-100">
-                <Square className="h-5 w-5 text-primary-700 drop-shadow" />
-              </span>
+              <FillyAvatar
+                status={stopHover ? "failed" : "paused"}
+                size={70}
+                interactive={false}
+              />
+              {stopHover && (
+                <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow">
+                  <Square className="h-3 w-3 text-primary-700" />
+                </span>
+              )}
             </button>
           </div>
         )}
@@ -968,11 +992,20 @@ function FillyControllerInner({
         className="filly-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6"
         style={fabDragStyle}
       >
+        {/* Filly peeks over the top edge of the card, box layered in front */}
+        <div className="relative z-10 flex justify-end">
+          <FillyAvatar
+            status={filly.status}
+            size={64}
+            interactive={false}
+            className="-mb-5 drop-shadow-lg"
+          />
+        </div>
         <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
           <LongPressIndicator progress={fabDrag.longPressProgress} />
           {/* Header */}
           <div
-            className="flex items-center justify-between border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-3 py-2.5"
+            className="flex items-center justify-between border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-3 pt-5 pb-2.5"
             onPointerDown={fabDrag.onPointerDown}
             onClickCapture={fabDrag.onClickCapture}
             onDoubleClick={fabDrag.resetPosition}
