@@ -951,7 +951,7 @@ function FillyControllerInner({
         {/* RECORDING — character listens; audio level drives its talking/ear animation.
             Same 64px slot/position as the idle orb above for a seamless transition. */}
         {filly.status === "recording" && (
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center">
             {/* timer + pause button inline */}
             <div className="flex items-center gap-1.5">
               <span className="filly-shimmer-text text-xs font-medium">
@@ -978,12 +978,9 @@ function FillyControllerInner({
                 size={70}
                 interactive={false}
               />
-              {/* small stop badge on hover, instead of covering Filly's face */}
-              {stopHover && (
-                <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-400 shadow">
-                  <Square className="h-3 w-3 text-white" />
-                </span>
-              )}
+              <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-400 shadow">
+                <Square className="h-3 w-3 text-white" />
+              </span>
             </button>
           </div>
         )}
@@ -1015,11 +1012,9 @@ function FillyControllerInner({
                 size={70}
                 interactive={false}
               />
-              {stopHover && (
-                <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-400 shadow">
-                  <Square className="h-3 w-3 text-white" />
-                </span>
-              )}
+              <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-400 shadow">
+                <Square className="h-3 w-3 text-white" />
+              </span>
             </button>
           </div>
         )}
@@ -1272,7 +1267,7 @@ function FillyControllerInner({
               onClick={handleDismiss}
               className="w-full rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200"
             >
-              {t("done")}
+              {filly.status === "failed" ? t("close") : t("done")}
             </button>
           </div>
         </div>
