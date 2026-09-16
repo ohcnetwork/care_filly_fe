@@ -69,9 +69,7 @@ export interface TokenSlotRead {
 }
 
 export type SchedulableResourceType =
-  | "practitioner"
-  | "location"
-  | "healthcare_service";
+  "practitioner" | "location" | "healthcare_service";
 
 export interface LocationMinimal {
   id: string;
@@ -92,7 +90,14 @@ export async function getCurrentUser(): Promise<CareUserMinimal | null> {
       headers: getHeaders(),
     });
     if (!res.ok) return null;
-    return (await res.json()) as CareUserMinimal;
+    const data = (await res.json()) as CareUserMinimal;
+    return {
+      id: data.id,
+      username: data.username,
+      first_name: data.first_name,
+      last_name: data.last_name,
+      email: data.email,
+    };
   } catch {
     return null;
   }
