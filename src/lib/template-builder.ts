@@ -32,8 +32,6 @@ export function extractFormFields(forms: ScribeFormSummary[]): FormField[] {
   const fields: FormField[] = [];
   for (const form of forms) {
     for (const q of form.questions) {
-      if (!q.enabled) continue;
-
       if (q.structured_type) {
         if (isSupportedStructuredType(q.structured_type)) {
           fields.push({

@@ -1,4 +1,5 @@
 import type {
+  EnableWhenCondition,
   ScribeFormSummary,
   ScribeQuestionSummary,
 } from "@/lib/types/filly";
@@ -241,11 +242,117 @@ export function parseStructuredRaw(raw: unknown): unknown[] | null {
   return null;
 }
 
+const ENABLE_WHEN_TRUE_STRINGS = new Set(["true", "on", "ok", "y", "yes", "1"]);
+const ENABLE_WHEN_FALSE_STRINGS = new Set(["false", "off", "no", "n", "0"]);
+
+function normalizeEnableWhenValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (ENABLE_WHEN_TRUE_STRINGS.has(v)) return true;
+    if (ENABLE_WHEN_FALSE_STRINGS.has(v)) return false;
+  }
+  return value;
+}
+
+function evaluateEnableWhenCondition(
+  condition: EnableWhenCondition,
+  values: unknown[],
+): boolean {
+  const normalizedValues = values.map(normalizeEnableWhenValue);
+  const expected = normalizeEnableWhenValue(condition.answer);
+
+  switch (condition.operator) {
+    case "exists":
+      return condition.answer ? values.length > 0 : values.length === 0;
+    case "equals":
+      return normalizedValues.includes(expected);
+    case "not_equals":
+      return (
+        normalizedValues.length > 0 && !normalizedValues.includes(expected)
+      );
+    case "greater":
+    case "less":
+    case "greater_or_equals":
+    case "less_or_equals": {
+      const expectedNum = Number(expected);
+      if (Number.isNaN(expectedNum)) return false;
+      return normalizedValues.some((v) => {
+        const num = Number(v);
+        if (Number.isNaN(num)) return false;
+        if (condition.operator === "greater") return num > expectedNum;
+        if (condition.operator === "less") return num < expectedNum;
+        if (condition.operator === "greater_or_equals")
+          return num >= expectedNum;
+        return num <= expectedNum;
+      });
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * Re-evaluates a question's enable_when using this pass's freshly
+ * extracted value for its trigger — preferred over the trigger's already-
+ * saved value — so a dependent field can still be filled when both it and
+ * its trigger were said in the same sentence, not yet written to the form.
+ * Falls back to the precomputed `enabled` flag entirely until care_fe
+ * ships `enable_when`/`ancestors_enabled` (both optional), and for any
+ * question with no conditions of its own.
+ */
+function isQuestionEnabledForFill(
+  question: ScribeQuestionSummary,
+  byLinkId: Map<string, ScribeQuestionSummary>,
+  data: Record<string, unknown>,
+): boolean {
+  if (!question.enable_when?.length) return question.enabled;
+  // An ancestor group being hidden can't be fixed by fresh trigger data.
+  if (question.ancestors_enabled === false) return false;
+
+  const results = question.enable_when.map((condition) => {
+    const trigger = byLinkId.get(condition.question);
+    if (!trigger || trigger.enabled === false) {
+      // A hidden/missing trigger has no real answer either way.
+      return evaluateEnableWhenCondition(condition, []);
+    }
+    const extracted = matchVitalToQuestion(trigger.text, data);
+    const freshValues =
+      extracted && extracted.toLowerCase() !== BOOLEAN_NOT_MENTIONED
+        ? [extracted]
+        : null;
+    const values =
+      freshValues ?? (Array.isArray(trigger.values) ? trigger.values : []);
+    return evaluateEnableWhenCondition(condition, values);
+  });
+
+  return question.enable_behavior === "any"
+    ? results.some(Boolean)
+    : results.every(Boolean);
+}
+
+/** Every question across every open form, keyed by link_id — enable_when
+ *  conditions reference a trigger by link_id, and a trigger can in theory
+ *  live in a different (sibling) form than its dependent. */
+function buildQuestionIndex(
+  forms: ScribeFormSummary[],
+): Map<string, ScribeQuestionSummary> {
+  const index = new Map<string, ScribeQuestionSummary>();
+  for (const form of forms) {
+    for (const question of form.questions) {
+      index.set(question.link_id, question);
+    }
+  }
+  return index;
+}
+
 /**
  * Match extracted `data` onto the open session's writable questions.
- * `forms` is `questionnaire.forms.list`'s result — its `enabled` flag
- * already accounts for every ancestor group's enable_when, so this never
- * needs to re-walk the question tree itself.
+ * `forms` is `questionnaire.forms.list`'s result. A currently-disabled
+ * question is still considered: `isQuestionEnabledForFill` re-checks it
+ * using this pass's own extracted data before falling back to the
+ * precomputed `enabled` flag, so a dependent field whose trigger was just
+ * said in the same sentence isn't skipped just because the trigger hasn't
+ * been written to the form yet.
  */
 export async function collectFieldsToFill(
   forms: ScribeFormSummary[],
@@ -261,10 +368,12 @@ export async function collectFieldsToFill(
   };
 
   const structuredCandidates: StructuredCandidate[] = [];
+  const questionsByLinkId = buildQuestionIndex(forms);
 
   for (const form of forms) {
     for (const question of form.questions) {
-      if (!question.enabled) continue;
+      if (!isQuestionEnabledForFill(question, questionsByLinkId, data))
+        continue;
 
       if (isSupportedStructuredType(question.structured_type)) {
         const label = findMatchingLabel(question.text, data);
