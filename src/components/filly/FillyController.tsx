@@ -1,5 +1,4 @@
 import {
-  Check,
   CheckCircle2,
   ChevronDown,
   FileText,
@@ -272,7 +271,7 @@ function useDraggableFab() {
       longPressRafRef.current = requestAnimationFrame(tick);
       longPressTimerRef.current = setTimeout(() => {
         longPressTriggeredRef.current = true;
-        pendingOpenMenuRef.current = false; // resetting shouldn't also open the menu
+        pendingOpenMenuRef.current = false;
         clearLongPress();
         resetPosition();
       }, LONG_PRESS_RESET_MS);
@@ -755,8 +754,19 @@ function FillyControllerInner({
         <div ref={micMenuRef} className="relative flex items-center gap-2">
           {micMenuOpen && (
             <div className="absolute right-0 bottom-full mb-2 w-64 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl">
-              <div className="border-b border-gray-100 px-3 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase bg-linear-to-r from-primary-100 to-transparent">
-                {t("microphone")}
+              <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 bg-linear-to-r from-primary-100 to-transparent">
+                <span className="text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
+                  {t("microphone")}
+                </span>
+                <Button
+                  onClick={() => setMicMenuOpen(false)}
+                  className="rounded-md size-5 text-gray-400 hover:bg-gray-100"
+                  title={t("close")}
+                  variant="ghost"
+                  size="icon"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
               </div>
               <div className="max-h-48 overflow-y-auto p-1">
                 {mic.error ? (
@@ -790,14 +800,12 @@ function FillyControllerInner({
                       >
                         <span
                           className={cn(
-                            "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border",
-                            selected
-                              ? "border-primary-600 bg-primary-600"
-                              : "border-gray-300 bg-white",
+                            "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
+                            selected ? "border-primary-600" : "border-gray-300",
                           )}
                         >
                           {selected && (
-                            <Check className="h-2.5 w-2.5 text-white" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary-600" />
                           )}
                         </span>
                         <span className="truncate">{device.label}</span>
@@ -828,14 +836,12 @@ function FillyControllerInner({
                     >
                       <span
                         className={cn(
-                          "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border",
-                          selected
-                            ? "border-primary-600 bg-primary-600"
-                            : "border-gray-300 bg-white",
+                          "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
+                          selected ? "border-primary-600" : "border-gray-300",
                         )}
                       >
                         {selected && (
-                          <Check className="h-2.5 w-2.5 text-white" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-primary-600" />
                         )}
                       </span>
                       <span className="truncate">{t(option.labelKey)}</span>
