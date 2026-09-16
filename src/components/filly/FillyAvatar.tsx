@@ -39,12 +39,16 @@ export interface FillyAvatarProps {
   className?: string;
   /** Bump (e.g. increment) to wake from sleep with a happy bounce, same as a click. */
   wakeSignal?: number;
+  /** Bump to trigger a dizzy spell, e.g. when Filly is dragged around fast. */
+  dizzySignal?: number;
 }
 
 /** How long a click's "happy" bounce overrides the mapped status. */
 const HAPPY_BOUNCE_MS = 1600;
 /** Idle with no click for this long → falls asleep. */
 const IDLE_SLEEP_MS = 10000;
+/** Dizzy keeps spinning for this long after being triggered. */
+const DIZZY_HOLD_MS = 1500;
 
 /** Mirrors the light rig baked into the package's own `<FillyScene>` (see
  *  `src/react/FillyScene.tsx` there) so the vanilla render matches it. */
@@ -76,6 +80,7 @@ export function FillyAvatar({
   onClick,
   className,
   wakeSignal,
+  dizzySignal,
 }: FillyAvatarProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -91,7 +96,7 @@ export function FillyAvatar({
   // resets the idle-sleep timer below. Both read/written by the render loop,
   // so a ref (not state) avoids re-running the mount effect on every click.
   const overrideRef = useRef<{
-    state: "happy" | "sleepy" | null;
+    state: "happy" | "sleepy" | "dizzy" | null;
     until: number;
   }>({ state: null, until: 0 });
   const lastInteractionRef = useRef(0);
@@ -111,6 +116,21 @@ export function FillyAvatar({
     }
     prevWakeSignalRef.current = wakeSignal;
   }, [wakeSignal]);
+
+  // Dizzy is triggered externally (fast FAB dragging), not by general mouse
+  // movement on the page — same bump-on-change pattern as wakeSignal.
+  const prevDizzySignalRef = useRef(dizzySignal);
+  useEffect(() => {
+    if (
+      dizzySignal !== undefined &&
+      dizzySignal !== prevDizzySignalRef.current
+    ) {
+      const now = performance.now();
+      lastInteractionRef.current = now;
+      overrideRef.current = { state: "dizzy", until: now + DIZZY_HOLD_MS };
+    }
+    prevDizzySignalRef.current = dizzySignal;
+  }, [dizzySignal]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;

@@ -56,6 +56,7 @@ const PROCESSING_STEPS = [
 const DRAG_THRESHOLD_PX = 4;
 const VIEWPORT_MARGIN_PX = 5;
 const LONG_PRESS_RESET_MS = 2000;
+const DIZZY_DRAG_SPEED_THRESHOLD = 1.0;
 
 function clampRectToViewport(rect: {
   left: number;
@@ -85,7 +86,7 @@ function LongPressIndicator({ progress }: { progress: number }) {
   if (progress <= 0) return null;
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
-      <div className="absolute top-0 bottom-0 right-0.5 -left-0.5 overflow-hidden rounded-3xl ring-2 ring-primary-500">
+      <div className="absolute -inset-0.5 overflow-hidden rounded-3xl ring-2 ring-primary-500">
         <div
           className="absolute inset-y-0 left-0 bg-primary-600/30"
           style={{ width: `${progress * 100}%` }}
@@ -137,6 +138,12 @@ function useDraggableFab() {
   const longPressRafRef = useRef<number | null>(null);
   const longPressStartRef = useRef(0);
   const longPressTriggeredRef = useRef(false);
+  // Fast dragging briefly makes Filly dizzy — bumped (not held) so
+  // FillyAvatar can own the actual spin duration, same as wakeSignal.
+  const [dizzySignal, setDizzySignal] = useState(0);
+  const lastDragMoveRef = useRef<{ x: number; y: number; t: number } | null>(
+    null,
+  );
 
   // Resolve the current user (async — CARE has no synchronous global for
   // it) and load *their* stored offset, so a shared device never shows a
@@ -261,12 +268,28 @@ function useDraggableFab() {
         x: drag.originX + (clamped.left - drag.rectLeft),
         y: drag.originY + (clamped.top - drag.rectTop),
       });
+
+      // Whipping the widget around fast (not just any page mouse movement)
+      // briefly makes Filly dizzy — fires on the first fast sample so it
+      // reliably overrides the hover/drag-start happy bounce.
+      const now = performance.now();
+      const lastMove = lastDragMoveRef.current;
+      if (lastMove) {
+        const dt = Math.max(1, now - lastMove.t);
+        const dist = Math.hypot(e.clientX - lastMove.x, e.clientY - lastMove.y);
+        const speed = dist / dt; // px/ms
+        if (speed > DIZZY_DRAG_SPEED_THRESHOLD) {
+          setDizzySignal((c) => c + 1);
+        }
+      }
+      lastDragMoveRef.current = { x: e.clientX, y: e.clientY, t: now };
     };
 
     const handleUp = () => {
       dragRef.current = null;
       setIsDragging(false);
       clearLongPress();
+      lastDragMoveRef.current = null;
       if (longPressTriggeredRef.current) {
         // clear after this tick so the click event that follows release
         // is still suppressed by onClickCapture below.
@@ -338,6 +361,7 @@ function useDraggableFab() {
     onPointerDown,
     onClickCapture,
     resetPosition,
+    dizzySignal,
   };
 }
 
@@ -772,6 +796,7 @@ function FillyControllerInner({
               interactive={!filly.isStarting}
               onClick={filly.isStarting ? undefined : handleStart}
               wakeSignal={wakeSignal}
+              dizzySignal={fabDrag.dizzySignal}
               className="drop-shadow-lg"
             />
             {filly.isStarting && (
@@ -992,6 +1017,7 @@ function FillyControllerInner({
         className="filly-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6"
         style={fabDragStyle}
       >
+        <LongPressIndicator progress={fabDrag.longPressProgress} />
         {/* Filly peeks over the top edge of the card, box layered in front */}
         <div className="relative z-10 flex justify-end">
           <FillyAvatar
@@ -1002,7 +1028,6 @@ function FillyControllerInner({
           />
         </div>
         <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
-          <LongPressIndicator progress={fabDrag.longPressProgress} />
           {/* Header */}
           <div
             className="flex items-center justify-between border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-3 pt-5 pb-2.5"
@@ -1228,8 +1253,7 @@ function expandServiceRequestRows(qId: string, structuredValue: unknown) {
 
     for (const item of structuredValue) {
       const sr = (item as Record<string, unknown> | null)?.service_request as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       const title = typeof sr?.title === "string" ? sr.title : undefined;
       const hasExtraDetails = !!(
         sr?.body_site ||

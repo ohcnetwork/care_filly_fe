@@ -18,7 +18,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@ohcnetwork/care-filly-character": "github:abhimanyurajeesh/care_filly_character#ff64798a87d3fa619f06ab32e45648f9902eabc0",
+    "@ohcnetwork/care-filly-character": "github:abhimanyurajeesh/care_filly_character#main",
     "@radix-ui/react-slot": "^1.2.0",
     "@radix-ui/react-switch": "^1.2.2",
     "@react-three/fiber": "^9.7.0",
@@ -62,6 +62,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.0.0",
     "nodemon": "^3.1.9",
+    "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.11",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -82,5 +83,9 @@
   },
   "engines": {
     "node": ">=22.9.0"
+  },
+  "allowScripts": {
+    "github:abhimanyurajeesh/care_filly_character#85d70b6a898d53ed41a3c22bf6b6a61822f36137": true,
+    "github:abhimanyurajeesh/care_filly_character#47f8a6056260d6eeb78a232583cd77a9ce1e0144": true
   }
 }
