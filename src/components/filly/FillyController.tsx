@@ -1018,49 +1018,63 @@ function FillyControllerInner({
           </div>
         )}
 
-        {/* COMPLETED — success pill */}
+        {/* COMPLETED — success pill, avatar peeking over the top-left */}
         {filly.status === "completed" && (
-          <div className="flex items-center gap-2 rounded-full border border-primary-100 bg-white py-2 pr-2 pl-3 shadow-xl">
-            <FillyAvatar status="completed" size={28} interactive={false} />
-            <span className="text-sm font-semibold text-primary-800">
-              {t("filled_count", { n: filledCount })}
-            </span>
-            <button
-              onClick={() => setExpanded(true)}
-              className="rounded-full px-3 py-1 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100"
-            >
-              {t("view")}
-            </button>
-            <button
-              onClick={handleDismiss}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100"
-              title={t("dismiss")}
-            >
-              <X className="h-4 w-4" />
-            </button>
+          <div className="flex flex-col items-start">
+            <FillyAvatar
+              status="completed"
+              size={50}
+              interactive={false}
+              className="-mb-3 ml-1 drop-shadow-lg"
+            />
+            <div className="flex items-center gap-2 rounded-full border border-primary-100 bg-white py-2 pr-2 pl-4 shadow-xl">
+              <span className="text-sm font-semibold text-primary-800">
+                {t("filled_count", { n: filledCount })}
+              </span>
+              <button
+                onClick={() => setExpanded(true)}
+                className="rounded-full px-3 py-1 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100"
+              >
+                {t("view")}
+              </button>
+              <button
+                onClick={handleDismiss}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100"
+                title={t("dismiss")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
 
-        {/* FAILED — error pill */}
+        {/* FAILED — error pill, avatar peeking over the top-left */}
         {filly.status === "failed" && (
-          <div className="flex items-center gap-2 rounded-full border border-red-100 bg-white py-2 pr-2 pl-3 shadow-xl">
-            <FillyAvatar status="failed" size={28} interactive={false} />
-            <span className="text-sm font-medium text-red-600">
-              {t("failed")}
-            </span>
-            <button
-              onClick={() => setExpanded(true)}
-              className="rounded-full px-3 py-1 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100"
-            >
-              {t("view")}
-            </button>
-            <button
-              onClick={handleDismiss}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100"
-              title={t("dismiss")}
-            >
-              <X className="h-4 w-4" />
-            </button>
+          <div className="flex flex-col items-start">
+            <FillyAvatar
+              status="failed"
+              size={50}
+              interactive={false}
+              className="-mb-3 ml-1 drop-shadow-lg"
+            />
+            <div className="flex items-center gap-2 rounded-full border border-red-100 bg-white py-2 pr-2 pl-4 shadow-xl">
+              <span className="text-sm font-medium text-red-600">
+                {t("failed")}
+              </span>
+              <button
+                onClick={() => setExpanded(true)}
+                className="rounded-full px-3 py-1 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100"
+              >
+                {t("view")}
+              </button>
+              <button
+                onClick={handleDismiss}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100"
+                title={t("dismiss")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>
