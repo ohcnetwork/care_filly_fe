@@ -182,7 +182,15 @@ export function FillyAvatar({
         const rect = wrapper.getBoundingClientRect();
         const w = Math.max(1, rect.width);
         const h = Math.max(1, rect.height);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        // Avatars render small (down to ~28px CSS), so even on 1x displays a
+        // plain devicePixelRatio backing buffer is too few samples for crisp
+        // edges — force at least 3x supersampling, capped at 4x since the
+        // canvas is tiny (the extra pixels cost is negligible either way).
+        const pixelRatio = Math.min(
+          Math.max(window.devicePixelRatio || 1, 3),
+          4,
+        );
+        renderer.setPixelRatio(pixelRatio);
         renderer.setSize(w, h, false);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();

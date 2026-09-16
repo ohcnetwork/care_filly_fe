@@ -9,9 +9,9 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
-  Settings2,
   Square,
   X,
+  XCircle,
 } from "lucide-react";
 import type { PointerEvent as ReactPointerEvent, SyntheticEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -56,6 +56,7 @@ const PROCESSING_STEPS = [
 const DRAG_THRESHOLD_PX = 4;
 const VIEWPORT_MARGIN_PX = 5;
 const LONG_PRESS_RESET_MS = 2000;
+const LONG_PRESS_OPEN_MENU_MS = 1000;
 const DIZZY_DRAG_SPEED_THRESHOLD = 1.0;
 
 function clampRectToViewport(rect: {
@@ -80,20 +81,38 @@ function clampRectToViewport(rect: {
 
 /** Ring + rising 30%-opacity fill with a short status label, shown while
  *  the widget is pressed and held, giving visual feedback for the
- *  press-and-hold reset gesture. */
-function LongPressIndicator({ progress }: { progress: number }) {
+ *  press-and-hold gesture. When `twoStage` is set (idle FAB only, where a
+ *  long-press also opens the settings menu), the first half is a lighter
+ *  fill ("hold to open settings") up to a halfway tick mark, then the
+ *  darker "resetting" fill for the second half. Without `twoStage` (the
+ *  other views, where long-press only ever resets position) it's just the
+ *  single reset-position stage across the whole 0–100% range. */
+function LongPressIndicator({
+  progress,
+  twoStage = false,
+}: {
+  progress: number;
+  twoStage?: boolean;
+}) {
   const { t } = useTranslation();
   if (progress <= 0) return null;
+  const openingMenu = twoStage && progress < 0.5;
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
       <div className="absolute -inset-0.5 overflow-hidden rounded-3xl ring-2 ring-primary-500">
         <div
-          className="absolute inset-y-0 left-0 bg-primary-600/30"
+          className={cn(
+            "absolute inset-y-0 left-0",
+            openingMenu ? "bg-primary-400/20" : "bg-primary-600/30",
+          )}
           style={{ width: `${progress * 100}%` }}
         />
+        {twoStage && (
+          <div className="absolute inset-y-0 left-1/2 w-px bg-primary-500/60" />
+        )}
       </div>
       <span className="absolute top-full bg-transparent left-1/2 mt-1 -translate-x-1/2 truncate px-2 py-0.5 text-[10px] text-gray-500 italic sm:text-xs">
-        {t("resetting_position")}
+        {openingMenu ? t("hold_to_open_settings") : t("resetting_position")}
       </span>
     </div>
   );
@@ -138,6 +157,16 @@ function useDraggableFab() {
   const longPressRafRef = useRef<number | null>(null);
   const longPressStartRef = useRef(0);
   const longPressTriggeredRef = useRef(false);
+  // Separate ~1s marker for opening the mic/settings menu — only committed
+  // on release (see handleUp below), and cancelled if the hold continues on
+  // to trigger the full 2s position-reset, so resetting position never also
+  // pops the menu open as a side effect.
+  const openMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingOpenMenuRef = useRef(false);
+  const openMenuTriggeredRef = useRef(false);
+  // Bumped (not held) each time a long-press commits to opening the menu —
+  // same signal pattern as dizzySignal/wakeSignal (see FillyAvatar).
+  const [menuOpenSignal, setMenuOpenSignal] = useState(0);
   // Fast dragging briefly makes Filly dizzy — bumped (not held) so
   // FillyAvatar can own the actual spin duration, same as wakeSignal.
   const [dizzySignal, setDizzySignal] = useState(0);
@@ -190,6 +219,10 @@ function useDraggableFab() {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    if (openMenuTimerRef.current) {
+      clearTimeout(openMenuTimerRef.current);
+      openMenuTimerRef.current = null;
+    }
     if (longPressRafRef.current) {
       cancelAnimationFrame(longPressRafRef.current);
       longPressRafRef.current = null;
@@ -228,6 +261,8 @@ function useDraggableFab() {
       // (handleUp below). longPressTriggeredRef suppresses the click that
       // otherwise follows the eventual pointerup/tap.
       longPressTriggeredRef.current = false;
+      openMenuTriggeredRef.current = false;
+      pendingOpenMenuRef.current = false;
       longPressStartRef.current = performance.now();
       const tick = () => {
         const elapsed = performance.now() - longPressStartRef.current;
@@ -237,9 +272,13 @@ function useDraggableFab() {
       longPressRafRef.current = requestAnimationFrame(tick);
       longPressTimerRef.current = setTimeout(() => {
         longPressTriggeredRef.current = true;
+        pendingOpenMenuRef.current = false; // resetting shouldn't also open the menu
         clearLongPress();
         resetPosition();
       }, LONG_PRESS_RESET_MS);
+      openMenuTimerRef.current = setTimeout(() => {
+        pendingOpenMenuRef.current = true;
+      }, LONG_PRESS_OPEN_MENU_MS);
     },
     [offset, clearLongPress, resetPosition],
   );
@@ -255,6 +294,7 @@ function useDraggableFab() {
         draggedRef.current = true;
         setIsDragging(true);
         clearLongPress(); // dragging supersedes the press-and-hold reset
+        pendingOpenMenuRef.current = false;
       }
       // Clamp using the widget's own measured size so it always keeps at
       // least VIEWPORT_MARGIN_PX visible on every edge of the viewport.
@@ -295,6 +335,14 @@ function useDraggableFab() {
         // is still suppressed by onClickCapture below.
         setTimeout(() => {
           longPressTriggeredRef.current = false;
+        }, 0);
+      }
+      if (pendingOpenMenuRef.current) {
+        pendingOpenMenuRef.current = false;
+        openMenuTriggeredRef.current = true;
+        setMenuOpenSignal((c) => c + 1);
+        setTimeout(() => {
+          openMenuTriggeredRef.current = false;
         }, 0);
       }
       if (draggedRef.current) {
@@ -347,7 +395,11 @@ function useDraggableFab() {
   }, []);
 
   const onClickCapture = useCallback((e: SyntheticEvent) => {
-    if (draggedRef.current || longPressTriggeredRef.current) {
+    if (
+      draggedRef.current ||
+      longPressTriggeredRef.current ||
+      openMenuTriggeredRef.current
+    ) {
       e.preventDefault();
       e.stopPropagation();
     }
@@ -357,6 +409,7 @@ function useDraggableFab() {
     offset,
     isDragging,
     longPressProgress,
+    menuOpenSignal,
     containerRef,
     onPointerDown,
     onClickCapture,
@@ -424,6 +477,17 @@ function FillyControllerInner({
   useEffect(() => {
     if (fabDrag.isDragging) setWakeSignal((c) => c + 1);
   }, [fabDrag.isDragging]);
+
+  // A ~1s long-press on the idle FAB directly opens the mic/settings menu —
+  // only reacts to a change (same bump-on-change pattern as wakeSignal), so
+  // a fresh menuOpenSignal={0} on mount doesn't open it.
+  const prevMenuOpenSignalRef = useRef(fabDrag.menuOpenSignal);
+  useEffect(() => {
+    if (fabDrag.menuOpenSignal !== prevMenuOpenSignalRef.current) {
+      setMicMenuOpen(true);
+    }
+    prevMenuOpenSignalRef.current = fabDrag.menuOpenSignal;
+  }, [fabDrag.menuOpenSignal]);
 
   // Hovering the stop button while recording/paused swaps Filly's face to a
   // "surprised" reaction instead of covering it with a dark overlay + icon.
@@ -509,9 +573,11 @@ function FillyControllerInner({
     },
   });
 
-  // Open the results view automatically once transcription/processing finishes
+  // Open the results view automatically once transcription/processing
+  // finishes, or immediately on failure so the error isn't just a dismissible
+  // pill the user has to notice and click "view" on.
   useEffect(() => {
-    if (filly.status === "completed") {
+    if (filly.status === "completed" || filly.status === "failed") {
       setExpanded(true);
     }
   }, [filly.status]);
@@ -685,7 +751,7 @@ function FillyControllerInner({
         onDoubleClick={fabDrag.resetPosition}
         title={t("ai_filly")}
       >
-        <LongPressIndicator progress={fabDrag.longPressProgress} />
+        <LongPressIndicator progress={fabDrag.longPressProgress} twoStage />
         <div ref={micMenuRef} className="relative flex items-center gap-2">
           {micMenuOpen && (
             <div className="absolute right-0 bottom-full mb-2 w-64 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl">
@@ -779,14 +845,6 @@ function FillyControllerInner({
               </div>
             </div>
           )}
-          <button
-            onClick={() => setMicMenuOpen((open) => !open)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-gray-500 shadow-lg transition-colors hover:bg-gray-50"
-            title={t("microphone")}
-            aria-label={t("microphone")}
-          >
-            <Settings2 className="h-4 w-4" />
-          </button>
           {/* same 64px slot as the recording/paused orb below, so the character
               doesn't jump position or size once a session starts */}
           <div className="relative flex h-16 w-16 items-center justify-center">
@@ -916,8 +974,8 @@ function FillyControllerInner({
               />
               {/* small stop badge on hover, instead of covering Filly's face */}
               {stopHover && (
-                <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow">
-                  <Square className="h-3 w-3 text-primary-700" />
+                <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-400 shadow">
+                  <Square className="h-3 w-3 text-white" />
                 </span>
               )}
             </button>
@@ -952,8 +1010,8 @@ function FillyControllerInner({
                 interactive={false}
               />
               {stopHover && (
-                <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow">
-                  <Square className="h-3 w-3 text-primary-700" />
+                <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-400 shadow">
+                  <Square className="h-3 w-3 text-white" />
                 </span>
               )}
             </button>
@@ -1036,11 +1094,27 @@ function FillyControllerInner({
             onDoubleClick={fabDrag.resetPosition}
           >
             <div className="flex items-center gap-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white">
-                <CheckCircle2 className="h-3.5 w-3.5" />
+              <span
+                className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-full text-white",
+                  filly.status === "failed" ? "bg-red-600" : "bg-primary-600",
+                )}
+              >
+                {filly.status === "failed" ? (
+                  <XCircle className="h-3.5 w-3.5" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
               </span>
-              <span className="text-xs font-semibold text-gray-700">
-                {t("fields_filled", { n: filledCount })}
+              <span
+                className={cn(
+                  "text-xs font-semibold",
+                  filly.status === "failed" ? "text-red-600" : "text-gray-700",
+                )}
+              >
+                {filly.status === "failed"
+                  ? t("failed")
+                  : t("fields_filled", { n: filledCount })}
               </span>
               {!editingTranscript && filly.status !== "processing" && (
                 <div className="flex items-center gap-2">

@@ -72,7 +72,8 @@ Supported codes cover Indic set — `en`, `hi`, `ta`, `te`, `ml`, `kn`,
 `brx`, `mai`, `doi` — plus `auto`.
 
 Clinicians pick a language from the same settings menu used to choose a
-microphone (the gear icon next to **Start**); the choice is persisted per-user.
+microphone (a long-press on the **Start** button opens it directly — see
+"Moving the Filly button"); the choice is persisted per-user.
 
 ---
 
@@ -135,7 +136,15 @@ The floating button can be **dragged** anywhere on screen — useful when it's
 sitting on top of a page's own submit button. It snaps back to a reachable
 position if dragged near a screen edge.
 
-To reset it back to its default corner:
+**Press and hold** the idle button to open the microphone/language settings
+menu:
+
+- **~1 second** — the settings menu opens directly (no extra icon to find
+  first).
+- **~2 seconds** (keep holding) — the button resets back to its default
+  corner, same as below. This does **not** also open the menu.
+
+To reset the button back to its default corner:
 
 - **Double-click / double-tap** the button,
 - **Press and hold** the button for about 2 seconds (a ring fills in
