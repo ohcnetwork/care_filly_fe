@@ -57,17 +57,6 @@ const VIEWPORT_MARGIN_PX = 5;
 const LONG_PRESS_RESET_MS = 2000;
 const LONG_PRESS_OPEN_MENU_MS = 1000;
 const DIZZY_DRAG_SPEED_THRESHOLD = 1.0;
-/** Untouched (idle FAB, no hover/drag) for this long before Filly wanders off. */
-const WANDER_IDLE_DELAY_MS = 8000;
-/** Walking speed, px/s. */
-const WANDER_SPEED_PX_S = 55;
-/** Pause at the far end of a pace before walking back. */
-const WANDER_PAUSE_MS = 1400;
-/** One "step" of the little back-and-forth pace, in px. */
-const WANDER_STEP_PX = 22;
-/** A pace is a few steps out, then the same number back — small rounds. */
-const WANDER_MIN_STEPS = 2;
-const WANDER_MAX_STEPS = 4;
 
 function clampRectToViewport(rect: {
   left: number;
@@ -184,117 +173,6 @@ function useDraggableFab() {
     null,
   );
 
-  // Idle wander: after a while untouched, Filly walks left across the
-  // screen, pauses, then walks back to its resting spot and waits again.
-  // Purely cosmetic — never persisted, and cancelled instantly by any real
-  // interaction (hover, press, drag).
-  const [facingLeft, setFacingLeft] = useState(false);
-  const [isWalking, setIsWalking] = useState(false);
-  const offsetRef = useRef(offset);
-  useEffect(() => {
-    offsetRef.current = offset;
-  }, [offset]);
-  const wanderRafRef = useRef<number | null>(null);
-  const wanderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const walkOnceRef = useRef<() => void>(() => {});
-
-  const stopWander = useCallback(() => {
-    if (wanderRafRef.current) {
-      cancelAnimationFrame(wanderRafRef.current);
-      wanderRafRef.current = null;
-    }
-    if (wanderTimerRef.current) {
-      clearTimeout(wanderTimerRef.current);
-      wanderTimerRef.current = null;
-    }
-    setFacingLeft(false);
-    setIsWalking(false);
-  }, []);
-
-  const scheduleWander = useCallback(() => {
-    wanderTimerRef.current = setTimeout(
-      () => walkOnceRef.current(),
-      WANDER_IDLE_DELAY_MS,
-    );
-  }, []);
-
-  /** Animate offset.x from `fromX` to `toX` (fixed y) at WANDER_SPEED_PX_S. */
-  const animateWalk = useCallback(
-    (
-      fromX: number,
-      toX: number,
-      y: number,
-      left: boolean,
-      onDone: () => void,
-    ) => {
-      const distance = Math.abs(toX - fromX);
-      if (distance < 1) {
-        onDone();
-        return;
-      }
-      const duration = (distance / WANDER_SPEED_PX_S) * 1000;
-      const startTime = performance.now();
-      setFacingLeft(left);
-      setIsWalking(true);
-      const step = (now: number) => {
-        const t = Math.min(1, (now - startTime) / duration);
-        setOffset({ x: fromX + (toX - fromX) * t, y });
-        if (t < 1) {
-          wanderRafRef.current = requestAnimationFrame(step);
-          return;
-        }
-        setIsWalking(false);
-        onDone();
-      };
-      wanderRafRef.current = requestAnimationFrame(step);
-    },
-    [],
-  );
-
-  // A pace: a few steps left, a short pause, then the same steps back to
-  // its resting spot — small rounds, not a trek across the whole screen.
-  const walkOnce = useCallback(() => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) {
-      scheduleWander();
-      return;
-    }
-    const steps =
-      WANDER_MIN_STEPS +
-      Math.floor(Math.random() * (WANDER_MAX_STEPS - WANDER_MIN_STEPS + 1));
-    const room = rect.left - VIEWPORT_MARGIN_PX;
-    const distance = Math.min(steps * WANDER_STEP_PX, room);
-    if (distance < WANDER_STEP_PX) {
-      scheduleWander();
-      return;
-    }
-    const restOffset = offsetRef.current;
-    const farX = restOffset.x - distance;
-    animateWalk(restOffset.x, farX, restOffset.y, true, () => {
-      wanderTimerRef.current = setTimeout(() => {
-        animateWalk(farX, restOffset.x, restOffset.y, false, () => {
-          scheduleWander();
-        });
-      }, WANDER_PAUSE_MS);
-    });
-  }, [animateWalk, scheduleWander]);
-  useEffect(() => {
-    walkOnceRef.current = walkOnce;
-  }, [walkOnce]);
-
-  // Enable/disable from the caller (only while the idle FAB is showing and
-  // nothing else — menu, drag, starting up — is going on).
-  const setWandering = useCallback(
-    (on: boolean) => {
-      if (on) {
-        if (!wanderTimerRef.current && !wanderRafRef.current) scheduleWander();
-      } else {
-        stopWander();
-      }
-    },
-    [scheduleWander, stopWander],
-  );
-
   // Resolve the current user (async — CARE has no synchronous global for
   // it) and load *their* stored offset, so a shared device never shows a
   // previous user's dragged position. Clamped in case the window has
@@ -360,16 +238,9 @@ function useDraggableFab() {
     }
   }, []);
 
-  // Any real engagement with the widget cancels an in-progress (or
-  // scheduled) wander immediately, without snapping back to its rest spot.
-  const onPointerEnter = useCallback(() => {
-    stopWander();
-  }, [stopWander]);
-
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return; // left mouse / touch / pen only
-      stopWander();
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       dragRef.current = {
@@ -408,7 +279,7 @@ function useDraggableFab() {
         pendingOpenMenuRef.current = true;
       }, LONG_PRESS_OPEN_MENU_MS);
     },
-    [offset, clearLongPress, resetPosition, stopWander],
+    [offset, clearLongPress, resetPosition],
   );
 
   useEffect(() => {
@@ -540,13 +411,9 @@ function useDraggableFab() {
     menuOpenSignal,
     containerRef,
     onPointerDown,
-    onPointerEnter,
     onClickCapture,
     resetPosition,
     dizzySignal,
-    facingLeft,
-    isWalking,
-    setWandering,
   };
 }
 
@@ -722,14 +589,6 @@ function FillyControllerInner({
     }
   }, [filly.status]);
 
-  // Idle wandering only makes sense for the plain idle FAB — not while
-  // starting a session, or with the mic/settings menu open over it.
-  useEffect(() => {
-    fabDrag.setWandering(
-      filly.status === "idle" && !filly.isStarting && !micMenuOpen,
-    );
-  }, [filly.status, filly.isStarting, micMenuOpen, fabDrag.setWandering]);
-
   // ── Live audio level visualiser ──────────────────────────────────────────
   // Opens a lightweight Web Audio analyser directly against the mic whenever
   // recording is active. Independent of the SDK's own recording stream.
@@ -887,7 +746,6 @@ function FillyControllerInner({
         className="filly-pop-in fixed right-4 bottom-4 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6"
         style={fabDragStyle}
         onPointerDown={fabDrag.onPointerDown}
-        onPointerEnter={fabDrag.onPointerEnter}
         onClickCapture={fabDrag.onClickCapture}
         onDoubleClick={fabDrag.resetPosition}
         title={t("ai_filly")}
@@ -1003,11 +861,7 @@ function FillyControllerInner({
               onClick={filly.isStarting ? undefined : handleStart}
               wakeSignal={wakeSignal}
               dizzySignal={fabDrag.dizzySignal}
-              walking={fabDrag.isWalking}
-              className={cn(
-                "drop-shadow-lg transition-transform duration-300",
-                fabDrag.facingLeft && "-scale-x-100",
-              )}
+              className="drop-shadow-lg"
             />
             {filly.isStarting && (
               <span
