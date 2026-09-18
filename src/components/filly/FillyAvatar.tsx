@@ -41,6 +41,8 @@ export interface FillyAvatarProps {
   wakeSignal?: number;
   /** Bump to trigger a dizzy spell, e.g. when Filly is dragged around fast. */
   dizzySignal?: number;
+  /** True while Filly is walking across the screen (idle wander). */
+  walking?: boolean;
 }
 
 /** How long a click's "happy" bounce overrides the mapped status. */
@@ -81,16 +83,17 @@ export function FillyAvatar({
   className,
   wakeSignal,
   dizzySignal,
+  walking = false,
 }: FillyAvatarProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Read by the render loop every frame — avoids tearing down/rebuilding the
   // whole renderer (and re-triggering enter impulses) on every prop change.
-  const liveRef = useRef({ status, speaking, audioLevel });
+  const liveRef = useRef({ status, speaking, audioLevel, walking });
   useEffect(() => {
-    liveRef.current = { status, speaking, audioLevel };
-  }, [status, speaking, audioLevel]);
+    liveRef.current = { status, speaking, audioLevel, walking };
+  }, [status, speaking, audioLevel, walking]);
 
   // Click → short happy bounce, overriding the mapped status; a click also
   // resets the idle-sleep timer below. Both read/written by the render loop,
@@ -248,7 +251,9 @@ export function FillyAvatar({
           targetState = override.state;
         } else {
           if (override.state) overrideRef.current = { state: null, until: 0 };
-          if (
+          if (live.walking && live.status === "idle") {
+            targetState = "walking";
+          } else if (
             t - lastCursorActivityRef.current > IDLE_SLEEP_MS &&
             live.status === "idle"
           ) {
