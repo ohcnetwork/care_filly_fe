@@ -46,9 +46,9 @@ export interface FillyAvatarProps {
 /** How long a click's "happy" bounce overrides the mapped status. */
 const HAPPY_BOUNCE_MS = 1600;
 /** Idle with no click for this long → falls asleep. */
-const IDLE_SLEEP_MS = 10000;
+const IDLE_SLEEP_MS = 5000;
 /** Dizzy keeps spinning for this long after being triggered. */
-const DIZZY_HOLD_MS = 1500;
+const DIZZY_HOLD_MS = 1800;
 
 /** Mirrors the light rig baked into the package's own `<FillyScene>` (see
  *  `src/react/FillyScene.tsx` there) so the vanilla render matches it. */
@@ -100,10 +100,13 @@ export function FillyAvatar({
     until: number;
   }>({ state: null, until: 0 });
   const lastInteractionRef = useRef(0);
+  //just for chicking if we can let filly sleep
+  const lastCursorActivityRef = useRef(0);
 
   const wake = () => {
     const now = performance.now();
     lastInteractionRef.current = now;
+    lastCursorActivityRef.current = now;
     overrideRef.current = { state: "happy", until: now + HAPPY_BOUNCE_MS };
   };
 
@@ -127,6 +130,7 @@ export function FillyAvatar({
     ) {
       const now = performance.now();
       lastInteractionRef.current = now;
+      lastCursorActivityRef.current = now;
       overrideRef.current = { state: "dizzy", until: now + DIZZY_HOLD_MS };
     }
     prevDizzySignalRef.current = dizzySignal;
@@ -138,6 +142,7 @@ export function FillyAvatar({
     if (!wrapper || !canvas) return;
 
     lastInteractionRef.current = performance.now();
+    lastCursorActivityRef.current = performance.now();
     let cancelled = false;
     let dispose: (() => void) | undefined;
 
@@ -218,6 +223,9 @@ export function FillyAvatar({
         const hw = Math.max(1, window.innerWidth / 2);
         const hh = Math.max(1, window.innerHeight / 2);
         animator.setPointer((e.clientX - cx) / hw, -(e.clientY - cy) / hh);
+        // Any cursor movement on the page counts as activity — Filly only
+        // falls asleep once the cursor has been still for IDLE_SLEEP_MS.
+        lastCursorActivityRef.current = performance.now();
       };
       window.addEventListener("pointermove", onPointerMove, {
         passive: true,
@@ -240,11 +248,13 @@ export function FillyAvatar({
           targetState = override.state;
         } else {
           if (override.state) overrideRef.current = { state: null, until: 0 };
-          const stale = t - lastInteractionRef.current > IDLE_SLEEP_MS;
-          if (stale && live.status === "idle") {
+          if (
+            t - lastCursorActivityRef.current > IDLE_SLEEP_MS &&
+            live.status === "idle"
+          ) {
             targetState = "sleepy";
           } else if (
-            stale &&
+            t - lastInteractionRef.current > IDLE_SLEEP_MS &&
             (live.status === "completed" || live.status === "failed")
           ) {
             targetState = "idle";
