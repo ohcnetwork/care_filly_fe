@@ -14,9 +14,10 @@ import {
   Sparkles,
   Square,
   X,
+  XCircle,
 } from "lucide-react";
 import type { PointerEvent as ReactPointerEvent, SyntheticEvent } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   FAB_POSITION_RESET_EVENT,
@@ -24,6 +25,7 @@ import {
   loadStoredFabOffset,
   resolveCurrentUserId,
 } from "@/lib/fab-position";
+import { readPluginConfig } from "@/lib/plugin-config";
 import {
   type FieldFill,
   buildSetResponseInput,
@@ -39,6 +41,8 @@ import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 
+import { FillyAvatar } from "@/components/filly/FillyAvatar";
+
 import { useFilly } from "@/hooks/useFilly";
 import { useFillyLanguage } from "@/hooks/useFillyLanguage";
 import { useFillyPreference } from "@/hooks/useFillyPreference";
@@ -48,6 +52,13 @@ import { useTranslation } from "@/hooks/useTranslation";
 interface FillyControllerProps {
   actions?: ScribeActionDescriptor[];
   invoke?: ScribeInvoke;
+}
+
+function resolveMascotEnabled(): boolean {
+  const configured =
+    readPluginConfig("ENABLE_FILLY_MASCOT") ??
+    (import.meta.env.REACT_ENABLE_FILLY_MASCOT as string | undefined);
+  return configured === "true";
 }
 
 const FIELD_FILL_DELAY_MS = 500;
@@ -61,6 +72,8 @@ const PROCESSING_STEPS = [
 const DRAG_THRESHOLD_PX = 4;
 const VIEWPORT_MARGIN_PX = 5;
 const LONG_PRESS_RESET_MS = 2000;
+const LONG_PRESS_OPEN_MENU_MS = 1000;
+const DIZZY_DRAG_SPEED_THRESHOLD = 1.0;
 
 function clampRectToViewport(rect: {
   left: number;
@@ -82,22 +95,32 @@ function clampRectToViewport(rect: {
   };
 }
 
-/** Ring + rising 30%-opacity fill with a short status label, shown while
- *  the widget is pressed and held, giving visual feedback for the
- *  press-and-hold reset gesture. */
-function LongPressIndicator({ progress }: { progress: number }) {
+function LongPressIndicator({
+  progress,
+  twoStage = false,
+}: {
+  progress: number;
+  twoStage?: boolean;
+}) {
   const { t } = useTranslation();
   if (progress <= 0) return null;
+  const openingMenu = twoStage && progress < 0.5;
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
       <div className="absolute top-0 bottom-0 right-0.5 -left-0.5 overflow-hidden rounded-3xl ring-2 ring-primary-500">
         <div
-          className="absolute inset-y-0 left-0 bg-primary-600/30"
+          className={cn(
+            "absolute inset-y-0 left-0",
+            openingMenu ? "bg-primary-400/20" : "bg-primary-600/30",
+          )}
           style={{ width: `${progress * 100}%` }}
         />
+        {twoStage && (
+          <div className="absolute inset-y-0 left-1/2 w-px bg-primary-500/60" />
+        )}
       </div>
       <span className="absolute top-full bg-transparent left-1/2 mt-1 -translate-x-1/2 truncate px-2 py-0.5 text-[10px] text-gray-500 italic sm:text-xs">
-        {t("resetting_position")}
+        {openingMenu ? t("hold_to_open_settings") : t("resetting_position")}
       </span>
     </div>
   );
@@ -120,7 +143,7 @@ function LongPressIndicator({ progress }: { progress: number }) {
  * to the viewport (both while dragging and on window resize) so it can
  * never be dragged fully off-screen and become unreachable.
  */
-function useDraggableFab() {
+function useDraggableFab(mascotEnabled: boolean) {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [longPressProgress, setLongPressProgress] = useState(0);
@@ -142,6 +165,22 @@ function useDraggableFab() {
   const longPressRafRef = useRef<number | null>(null);
   const longPressStartRef = useRef(0);
   const longPressTriggeredRef = useRef(false);
+  // Mascot-only: a ~1s long-press on the idle FAB directly opens the
+  // mic/settings menu — only committed on release (see handleUp below), and
+  // cancelled if the hold continues on to trigger the full 2s
+  // position-reset, so resetting position never also pops the menu open.
+  const openMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingOpenMenuRef = useRef(false);
+  const openMenuTriggeredRef = useRef(false);
+  // Bumped (not held) each time a long-press commits to opening the menu —
+  // same signal pattern as dizzySignal (see FillyAvatar).
+  const [menuOpenSignal, setMenuOpenSignal] = useState(0);
+  // Mascot-only: fast dragging briefly makes Filly dizzy — bumped (not
+  // held) so FillyAvatar can own the actual spin duration.
+  const [dizzySignal, setDizzySignal] = useState(0);
+  const lastDragMoveRef = useRef<{ x: number; y: number; t: number } | null>(
+    null,
+  );
 
   // Resolve the current user (async — CARE has no synchronous global for
   // it) and load *their* stored offset, so a shared device never shows a
@@ -188,6 +227,10 @@ function useDraggableFab() {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    if (openMenuTimerRef.current) {
+      clearTimeout(openMenuTimerRef.current);
+      openMenuTimerRef.current = null;
+    }
     if (longPressRafRef.current) {
       cancelAnimationFrame(longPressRafRef.current);
       longPressRafRef.current = null;
@@ -226,6 +269,8 @@ function useDraggableFab() {
       // (handleUp below). longPressTriggeredRef suppresses the click that
       // otherwise follows the eventual pointerup/tap.
       longPressTriggeredRef.current = false;
+      openMenuTriggeredRef.current = false;
+      pendingOpenMenuRef.current = false;
       longPressStartRef.current = performance.now();
       const tick = () => {
         const elapsed = performance.now() - longPressStartRef.current;
@@ -235,9 +280,15 @@ function useDraggableFab() {
       longPressRafRef.current = requestAnimationFrame(tick);
       longPressTimerRef.current = setTimeout(() => {
         longPressTriggeredRef.current = true;
+        pendingOpenMenuRef.current = false;
         clearLongPress();
         resetPosition();
       }, LONG_PRESS_RESET_MS);
+      if (mascotEnabled) {
+        openMenuTimerRef.current = setTimeout(() => {
+          pendingOpenMenuRef.current = true;
+        }, LONG_PRESS_OPEN_MENU_MS);
+      }
     },
     [offset, clearLongPress, resetPosition],
   );
@@ -253,6 +304,7 @@ function useDraggableFab() {
         draggedRef.current = true;
         setIsDragging(true);
         clearLongPress(); // dragging supersedes the press-and-hold reset
+        pendingOpenMenuRef.current = false;
       }
       // Clamp using the widget's own measured size so it always keeps at
       // least VIEWPORT_MARGIN_PX visible on every edge of the viewport.
@@ -266,17 +318,46 @@ function useDraggableFab() {
         x: drag.originX + (clamped.left - drag.rectLeft),
         y: drag.originY + (clamped.top - drag.rectTop),
       });
+
+      // Mascot-only: whipping the widget around fast (not just any page
+      // mouse movement) briefly makes Filly dizzy — fires on the first fast
+      // sample so it reliably overrides the hover/drag-start happy bounce.
+      if (mascotEnabled) {
+        const now = performance.now();
+        const lastMove = lastDragMoveRef.current;
+        if (lastMove) {
+          const dt = Math.max(1, now - lastMove.t);
+          const dist = Math.hypot(
+            e.clientX - lastMove.x,
+            e.clientY - lastMove.y,
+          );
+          const speed = dist / dt; // px/ms
+          if (speed > DIZZY_DRAG_SPEED_THRESHOLD) {
+            setDizzySignal((c) => c + 1);
+          }
+        }
+        lastDragMoveRef.current = { x: e.clientX, y: e.clientY, t: now };
+      }
     };
 
     const handleUp = () => {
       dragRef.current = null;
       setIsDragging(false);
       clearLongPress();
+      lastDragMoveRef.current = null;
       if (longPressTriggeredRef.current) {
         // clear after this tick so the click event that follows release
         // is still suppressed by onClickCapture below.
         setTimeout(() => {
           longPressTriggeredRef.current = false;
+        }, 0);
+      }
+      if (pendingOpenMenuRef.current) {
+        pendingOpenMenuRef.current = false;
+        openMenuTriggeredRef.current = true;
+        setMenuOpenSignal((c) => c + 1);
+        setTimeout(() => {
+          openMenuTriggeredRef.current = false;
         }, 0);
       }
       if (draggedRef.current) {
@@ -329,7 +410,11 @@ function useDraggableFab() {
   }, []);
 
   const onClickCapture = useCallback((e: SyntheticEvent) => {
-    if (draggedRef.current || longPressTriggeredRef.current) {
+    if (
+      draggedRef.current ||
+      longPressTriggeredRef.current ||
+      openMenuTriggeredRef.current
+    ) {
       e.preventDefault();
       e.stopPropagation();
     }
@@ -339,6 +424,8 @@ function useDraggableFab() {
     offset,
     isDragging,
     longPressProgress,
+    menuOpenSignal,
+    dizzySignal,
     containerRef,
     onPointerDown,
     onClickCapture,
@@ -389,12 +476,36 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
   }, [micMenuOpen]);
 
   // Lets the widget be dragged clear of a page's own submit button.
-  const fabDrag = useDraggableFab();
+  // Deferred to render (not module scope) so a plugin-config override that
+  // loads after mount is still picked up — same pattern as useFillyLanguage.
+  const MASCOT_ENABLED = useMemo(resolveMascotEnabled, []);
+  const fabDrag = useDraggableFab(MASCOT_ENABLED);
   const fabDragStyle = {
     transform: `translate3d(${fabDrag.offset.x}px, ${fabDrag.offset.y}px, 0)`,
     touchAction: "none",
     cursor: fabDrag.isDragging ? "grabbing" : undefined,
   } as const;
+
+  const [wakeSignal, setWakeSignal] = useState(0);
+  useEffect(() => {
+    if (MASCOT_ENABLED && fabDrag.isDragging) setWakeSignal((c) => c + 1);
+  }, [fabDrag.isDragging]);
+
+  const prevMenuOpenSignalRef = useRef(fabDrag.menuOpenSignal);
+  useEffect(() => {
+    if (
+      MASCOT_ENABLED &&
+      fabDrag.menuOpenSignal !== prevMenuOpenSignalRef.current
+    ) {
+      setMicMenuOpen(true);
+    }
+    prevMenuOpenSignalRef.current = fabDrag.menuOpenSignal;
+  }, [fabDrag.menuOpenSignal]);
+
+  // Mascot-only: hovering the stop button while recording/paused swaps
+  // Filly's face to a "surprised" reaction instead of covering it with a
+  // dark overlay + icon.
+  const [stopHover, setStopHover] = useState(false);
 
   const clearFillTimeouts = useCallback(() => {
     fillTimeoutsRef.current.forEach(clearTimeout);
@@ -501,10 +612,21 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
     },
   });
 
-  // Open the results view automatically once transcription/processing finishes
+  // Open the results view automatically once transcription/processing
+  // finishes, or immediately on failure so the error isn't just a
+  // dismissible pill the user has to notice and click "view" on.
   useEffect(() => {
-    if (filly.status === "completed") {
+    if (filly.status === "completed" || filly.status === "failed") {
       setExpanded(true);
+    }
+  }, [filly.status]);
+
+  // Reset the mascot's stop-hover face override once we leave
+  // recording/paused (e.g. a click unmounts the button mid-hover, before
+  // mouseleave can fire).
+  useEffect(() => {
+    if (filly.status !== "recording" && filly.status !== "paused") {
+      setStopHover(false);
     }
   }, [filly.status]);
 
@@ -647,6 +769,8 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
   const mins = Math.floor(duration / 60);
   const secs = duration % 60;
   const timeStr = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  const avgBarLevel =
+    barHeights.reduce((sum, h) => sum + h, 0) / Math.max(1, barHeights.length);
 
   // Idle state — floating pill FAB (bottom-right)
   if (filly.status === "idle") {
@@ -655,6 +779,146 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
     // by the backend's can_use_filly permission check.
     if (preference.isLoading || !preference.enabled) {
       return null;
+    }
+
+    if (MASCOT_ENABLED) {
+      return (
+        <div
+          ref={fabDrag.containerRef}
+          className="filly-pop-in fixed right-4 bottom-4 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6"
+          style={fabDragStyle}
+          onPointerDown={fabDrag.onPointerDown}
+          onClickCapture={fabDrag.onClickCapture}
+          onDoubleClick={fabDrag.resetPosition}
+          title={t("ai_filly")}
+        >
+          <LongPressIndicator progress={fabDrag.longPressProgress} twoStage />
+          <div ref={micMenuRef} className="relative flex items-center gap-2">
+            {micMenuOpen && (
+              <div className="absolute right-0 bottom-full mb-2 w-64 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl">
+                <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 bg-linear-to-r from-primary-100 to-transparent">
+                  <span className="text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
+                    {t("microphone")}
+                  </span>
+                  <Button
+                    onClick={() => setMicMenuOpen(false)}
+                    className="rounded-md size-5 text-gray-400 hover:bg-gray-100"
+                    title={t("close")}
+                    variant="ghost"
+                    size="icon"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <div className="max-h-48 overflow-y-auto p-1">
+                  {mic.error ? (
+                    <p className="px-2 py-1.5 text-xs text-gray-500">
+                      {t("microphone_permission_required")}
+                    </p>
+                  ) : mic.isLoading ? (
+                    <div className="flex items-center justify-center py-3">
+                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                    </div>
+                  ) : mic.devices.length === 0 ? (
+                    <p className="px-2 py-1.5 text-xs text-gray-500">
+                      {t("no_microphones_found")}
+                    </p>
+                  ) : (
+                    mic.devices.map((device) => {
+                      const selected = device.deviceId === mic.selectedDeviceId;
+                      return (
+                        <button
+                          key={device.deviceId}
+                          onClick={() => {
+                            mic.selectDevice(device.deviceId);
+                            setMicMenuOpen(false);
+                          }}
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs",
+                            selected
+                              ? "bg-primary-50 font-medium text-primary-700"
+                              : "text-gray-600 hover:bg-gray-50",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
+                              selected
+                                ? "border-primary-600"
+                                : "border-gray-300",
+                            )}
+                          >
+                            {selected && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-primary-600" />
+                            )}
+                          </span>
+                          <span className="truncate">{device.label}</span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="border-y border-gray-100 px-3 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase bg-linear-to-r from-primary-100 to-transparent">
+                  {t("language")}
+                </div>
+                <div className="max-h-48 overflow-y-auto p-1">
+                  {fillyLanguage.options.map((option) => {
+                    const selected = option.code === fillyLanguage.language;
+                    return (
+                      <button
+                        key={option.code}
+                        onClick={() => {
+                          fillyLanguage.selectLanguage(option.code);
+                          setMicMenuOpen(false);
+                        }}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs",
+                          selected
+                            ? "bg-primary-50 font-medium text-primary-700"
+                            : "text-gray-600 hover:bg-gray-50",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
+                            selected ? "border-primary-600" : "border-gray-300",
+                          )}
+                        >
+                          {selected && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary-600" />
+                          )}
+                        </span>
+                        <span className="truncate">{t(option.labelKey)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {/* same 64px slot as the recording/paused orb below, so the
+                character doesn't jump position or size once a session starts */}
+            <div className="relative flex h-16 w-16 items-center justify-center">
+              <FillyAvatar
+                status="idle"
+                size={70}
+                interactive={!filly.isStarting}
+                onClick={filly.isStarting ? undefined : handleStart}
+                wakeSignal={wakeSignal}
+                dizzySignal={fabDrag.dizzySignal}
+                className="drop-shadow-lg"
+              />
+              {filly.isStarting && (
+                <span
+                  className="pointer-events-none absolute -right-1 -bottom-1 flex h-5 w-5 items-center justify-center rounded-full bg-white shadow"
+                  title={t("starting")}
+                >
+                  <Loader2 className="h-3 w-3 animate-spin text-primary-600" />
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      );
     }
 
     return (
@@ -858,7 +1122,11 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
             <p className="filly-shimmer-text text-xs font-medium">
               {t(PROCESSING_STEPS[processingStep])}
             </p>
-            <AiPulse />
+            {MASCOT_ENABLED ? (
+              <FillyAvatar status="processing" size={70} interactive={false} />
+            ) : (
+              <AiPulse />
+            )}
             {showTranscript && transcriptMinimized && (
               <button
                 onClick={() => setTranscriptMinimized(false)}
@@ -872,119 +1140,241 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
         )}
 
         {/* RECORDING — same size/position as processing orb for seamless transition */}
-        {filly.status === "recording" && (
-          <div className="flex flex-col items-center gap-2 pr-4">
-            {/* timer + pause button inline */}
-            <div className="flex items-center gap-1.5">
-              <span className="filly-shimmer-text text-xs font-medium">
-                {timeStr}
-              </span>
+        {filly.status === "recording" &&
+          (MASCOT_ENABLED ? (
+            <div className="flex flex-col items-center">
+              {/* timer + pause button inline */}
+              <div className="flex items-center gap-1.5">
+                <span className="filly-shimmer-text text-xs font-medium">
+                  {timeStr}
+                </span>
+                <button
+                  onClick={filly.pauseRecording}
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200"
+                  title={t("pause")}
+                >
+                  <Pause className="h-2.5 w-2.5" />
+                </button>
+              </div>
               <button
-                onClick={filly.pauseRecording}
-                className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200"
-                title={t("pause")}
+                onClick={handleStop}
+                onMouseEnter={() => setStopHover(true)}
+                onMouseLeave={() => setStopHover(false)}
+                title={t("stop_and_process")}
+                className="relative flex h-16 w-16 items-center justify-center rounded-full transition-transform active:scale-95"
               >
-                <Pause className="h-2.5 w-2.5" />
+                <FillyAvatar
+                  status={stopHover ? "failed" : "recording"}
+                  audioLevel={avgBarLevel}
+                  size={70}
+                  interactive={false}
+                />
+                <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-400 shadow">
+                  <Square className="h-3 w-3 text-white" />
+                </span>
               </button>
             </div>
-            <button
-              onClick={handleStop}
-              title={t("stop_and_process")}
-              className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 shadow-lg shadow-primary-700/40 transition-all active:scale-95 hover:shadow-xl hover:shadow-primary-700/50 opacity-85 hover:opacity-100"
-            >
-              {/* rotating conic glow */}
-              <span className="filly-spin-slow pointer-events-none absolute -inset-10 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.3),transparent)] opacity-50" />
-              {/* live audio bars — height driven by Web Audio AnalyserNode */}
-              <span className="relative flex h-6 items-center gap-0.5 transition-opacity group-hover:opacity-0">
-                {barHeights.map((h, i) => (
-                  <span
-                    key={i}
-                    className="w-0.5 rounded-full bg-white/90 transition-[height] duration-75"
-                    style={{ height: `${h * 100}%` }}
-                  />
-                ))}
-              </span>
-              {/* stop icon on hover */}
-              <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                <Square className="h-5 w-5 text-white" />
-              </span>
-            </button>
-          </div>
-        )}
+          ) : (
+            <div className="flex flex-col items-center gap-2 pr-4">
+              {/* timer + pause button inline */}
+              <div className="flex items-center gap-1.5">
+                <span className="filly-shimmer-text text-xs font-medium">
+                  {timeStr}
+                </span>
+                <button
+                  onClick={filly.pauseRecording}
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200"
+                  title={t("pause")}
+                >
+                  <Pause className="h-2.5 w-2.5" />
+                </button>
+              </div>
+              <button
+                onClick={handleStop}
+                title={t("stop_and_process")}
+                className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 shadow-lg shadow-primary-700/40 transition-all active:scale-95 hover:shadow-xl hover:shadow-primary-700/50 opacity-85 hover:opacity-100"
+              >
+                {/* rotating conic glow */}
+                <span className="filly-spin-slow pointer-events-none absolute -inset-10 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(255,255,255,0.3),transparent)] opacity-50" />
+                {/* live audio bars — height driven by Web Audio AnalyserNode */}
+                <span className="relative flex h-6 items-center gap-0.5 transition-opacity group-hover:opacity-0">
+                  {barHeights.map((h, i) => (
+                    <span
+                      key={i}
+                      className="w-0.5 rounded-full bg-white/90 transition-[height] duration-75"
+                      style={{ height: `${h * 100}%` }}
+                    />
+                  ))}
+                </span>
+                {/* stop icon on hover */}
+                <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                  <Square className="h-5 w-5 text-white" />
+                </span>
+              </button>
+            </div>
+          ))}
 
         {/* PAUSED — resume near timer; stop on orb hover */}
-        {filly.status === "paused" && (
-          <div className="flex flex-col items-center gap-2 pr-4">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold text-amber-500">
-                {timeStr}
-              </span>
+        {filly.status === "paused" &&
+          (MASCOT_ENABLED ? (
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-amber-500">
+                  {timeStr}
+                </span>
+                <button
+                  onClick={filly.resumeRecording}
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-white transition-colors hover:bg-primary-700 opacity-90"
+                  title={t("resume")}
+                >
+                  <Play className="h-2.5 w-2.5" />
+                </button>
+              </div>
               <button
-                onClick={filly.resumeRecording}
-                className="flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-white transition-colors hover:bg-primary-700 opacity-90"
-                title={t("resume")}
+                onClick={handleStop}
+                onMouseEnter={() => setStopHover(true)}
+                onMouseLeave={() => setStopHover(false)}
+                title={t("stop_and_process")}
+                className="relative flex h-16 w-16 items-center justify-center rounded-full transition-transform active:scale-95"
               >
-                <Play className="h-2.5 w-2.5" />
+                <FillyAvatar
+                  status={stopHover ? "failed" : "paused"}
+                  size={70}
+                  interactive={false}
+                />
+                <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-400 shadow">
+                  <Square className="h-3 w-3 text-white" />
+                </span>
               </button>
             </div>
-            <button
-              onClick={handleStop}
-              title={t("stop_and_process")}
-              className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 opacity-85 shadow-lg shadow-primary-700/30 transition-all hover:opacity-100 active:scale-95"
-            >
-              <Pause className="relative h-6 w-6 text-white transition-opacity group-hover:opacity-0" />
-              <Square className="absolute h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
-            </button>
-          </div>
-        )}
+          ) : (
+            <div className="flex flex-col items-center gap-2 pr-4">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-amber-500">
+                  {timeStr}
+                </span>
+                <button
+                  onClick={filly.resumeRecording}
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-white transition-colors hover:bg-primary-700 opacity-90"
+                  title={t("resume")}
+                >
+                  <Play className="h-2.5 w-2.5" />
+                </button>
+              </div>
+              <button
+                onClick={handleStop}
+                title={t("stop_and_process")}
+                className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-primary-600 via-primary-700 to-primary-800 opacity-85 shadow-lg shadow-primary-700/30 transition-all hover:opacity-100 active:scale-95"
+              >
+                <Pause className="relative h-6 w-6 text-white transition-opacity group-hover:opacity-0" />
+                <Square className="absolute h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+              </button>
+            </div>
+          ))}
 
         {/* COMPLETED — success pill */}
-        {filly.status === "completed" && (
-          <div className="flex items-center gap-2 rounded-full border border-primary-100 bg-white py-2 pr-2 pl-3 shadow-xl">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-white">
-              <CheckCircle2 className="h-4 w-4" />
-            </span>
-            <span className="text-sm font-semibold text-primary-800">
-              {t("filled_count", { n: filledCount })}
-            </span>
-            <button
-              onClick={() => setExpanded(true)}
-              className="rounded-full px-3 py-1 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100"
-            >
-              {t("view")}
-            </button>
-            <button
-              onClick={handleDismiss}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100"
-              title={t("dismiss")}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
+        {filly.status === "completed" &&
+          (MASCOT_ENABLED ? (
+            <div className="flex flex-col items-start">
+              <FillyAvatar
+                status="completed"
+                size={50}
+                interactive={false}
+                className="-mb-3 ml-1 drop-shadow-lg"
+              />
+              <div className="flex items-center gap-2 rounded-full border border-primary-100 bg-white py-2 pr-2 pl-4 shadow-xl">
+                <span className="text-sm font-semibold text-primary-800">
+                  {t("filled_count", { n: filledCount })}
+                </span>
+                <button
+                  onClick={() => setExpanded(true)}
+                  className="rounded-full px-3 py-1 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100"
+                >
+                  {t("view")}
+                </button>
+                <button
+                  onClick={handleDismiss}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100"
+                  title={t("dismiss")}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-full border border-primary-100 bg-white py-2 pr-2 pl-3 shadow-xl">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-white">
+                <CheckCircle2 className="h-4 w-4" />
+              </span>
+              <span className="text-sm font-semibold text-primary-800">
+                {t("filled_count", { n: filledCount })}
+              </span>
+              <button
+                onClick={() => setExpanded(true)}
+                className="rounded-full px-3 py-1 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100"
+              >
+                {t("view")}
+              </button>
+              <button
+                onClick={handleDismiss}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100"
+                title={t("dismiss")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
 
         {/* FAILED — error pill */}
-        {filly.status === "failed" && (
-          <div className="flex items-center gap-2 rounded-full border border-red-100 bg-white py-2 pr-2 pl-3 shadow-xl">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
-            <span className="text-sm font-medium text-red-600">
-              {t("failed")}
-            </span>
-            <button
-              onClick={() => setExpanded(true)}
-              className="rounded-full px-3 py-1 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100"
-            >
-              {t("view")}
-            </button>
-            <button
-              onClick={handleDismiss}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100"
-              title={t("dismiss")}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
+        {filly.status === "failed" &&
+          (MASCOT_ENABLED ? (
+            <div className="flex flex-col items-start">
+              <FillyAvatar
+                status="failed"
+                size={50}
+                interactive={false}
+                className="-mb-3 ml-1 drop-shadow-lg"
+              />
+              <div className="flex items-center gap-2 rounded-full border border-red-100 bg-white py-2 pr-2 pl-4 shadow-xl">
+                <span className="text-sm font-medium text-red-600">
+                  {t("failed")}
+                </span>
+                <button
+                  onClick={() => setExpanded(true)}
+                  className="rounded-full px-3 py-1 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100"
+                >
+                  {t("view")}
+                </button>
+                <button
+                  onClick={handleDismiss}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100"
+                  title={t("dismiss")}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-full border border-red-100 bg-white py-2 pr-2 pl-3 shadow-xl">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
+              <span className="text-sm font-medium text-red-600">
+                {t("failed")}
+              </span>
+              <button
+                onClick={() => setExpanded(true)}
+                className="rounded-full px-3 py-1 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100"
+              >
+                {t("view")}
+              </button>
+              <button
+                onClick={handleDismiss}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100"
+                title={t("dismiss")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
       </div>
     );
   }
@@ -997,21 +1387,56 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
         className="filly-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6"
         style={fabDragStyle}
       >
-        <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
+        {MASCOT_ENABLED && (
           <LongPressIndicator progress={fabDrag.longPressProgress} />
+        )}
+        {/* Filly peeks over the top edge of the card, box layered in front */}
+        {MASCOT_ENABLED && (
+          <div className="relative z-10 flex justify-end">
+            <FillyAvatar
+              status={filly.status}
+              size={64}
+              interactive={false}
+              className="-mb-5 drop-shadow-lg"
+            />
+          </div>
+        )}
+        <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
+          {!MASCOT_ENABLED && (
+            <LongPressIndicator progress={fabDrag.longPressProgress} />
+          )}
           {/* Header */}
           <div
-            className="flex items-center justify-between border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-3 py-2.5"
+            className={cn(
+              "flex items-center justify-between border-b border-gray-100 bg-linear-to-r from-primary-100 to-transparent px-3 py-2.5",
+              MASCOT_ENABLED && "pt-5",
+            )}
             onPointerDown={fabDrag.onPointerDown}
             onClickCapture={fabDrag.onClickCapture}
             onDoubleClick={fabDrag.resetPosition}
           >
             <div className="flex items-center gap-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white">
-                <CheckCircle2 className="h-3.5 w-3.5" />
+              <span
+                className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-full text-white",
+                  filly.status === "failed" ? "bg-red-600" : "bg-primary-600",
+                )}
+              >
+                {filly.status === "failed" ? (
+                  <XCircle className="h-3.5 w-3.5" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
               </span>
-              <span className="text-xs font-semibold text-gray-700">
-                {t("fields_filled", { n: filledCount })}
+              <span
+                className={cn(
+                  "text-xs font-semibold",
+                  filly.status === "failed" ? "text-red-600" : "text-gray-700",
+                )}
+              >
+                {filly.status === "failed"
+                  ? t("failed")
+                  : t("fields_filled", { n: filledCount })}
               </span>
               {!editingTranscript && filly.status !== "processing" && (
                 <div className="flex items-center gap-2">
@@ -1146,7 +1571,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
               onClick={handleDismiss}
               className="w-full rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200"
             >
-              {t("done")}
+              {filly.status === "failed" ? t("close") : t("done")}
             </button>
           </div>
         </div>
@@ -1321,8 +1746,7 @@ function expandServiceRequestRows(
 
     for (const item of structuredValue) {
       const sr = (item as Record<string, unknown> | null)?.service_request as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       const title = typeof sr?.title === "string" ? sr.title : undefined;
       const hasExtraDetails = !!(
         sr?.body_site ||
