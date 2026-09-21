@@ -1013,7 +1013,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
             <div className="relative flex h-16 w-16 items-center justify-center">
               <FillyAvatar
                 status="idle"
-                size={70}
+                size={75}
                 interactive={!filly.isStarting}
                 onClick={filly.isStarting ? undefined : handleStart}
                 wakeSignal={wakeSignal}
@@ -1236,7 +1236,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
               {t(PROCESSING_STEPS[processingStep])}
             </p>
             {MASCOT_ENABLED ? (
-              <FillyAvatar status="processing" size={70} interactive={false} />
+              <FillyAvatar status="processing" size={75} interactive={false} />
             ) : (
               <AiPulse />
             )}
@@ -1279,7 +1279,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
                 <FillyAvatar
                   status={stopHover ? "failed" : "recording"}
                   audioLevel={avgBarLevel}
-                  size={70}
+                  size={75}
                   interactive={false}
                 />
                 <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-400 shadow">
@@ -1352,7 +1352,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
               >
                 <FillyAvatar
                   status={stopHover ? "failed" : "paused"}
-                  size={70}
+                  size={75}
                   interactive={false}
                 />
                 <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-400 shadow">
@@ -1391,7 +1391,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
             <div className="flex flex-col items-start">
               <FillyAvatar
                 status="completed"
-                size={50}
+                size={55}
                 interactive={false}
                 className="-mb-3 ml-1 drop-shadow-lg"
               />
@@ -1444,7 +1444,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
             <div className="flex flex-col items-start">
               <FillyAvatar
                 status="failed"
-                size={50}
+                size={55}
                 interactive={false}
                 className="-mb-3 ml-1 drop-shadow-lg"
               />
