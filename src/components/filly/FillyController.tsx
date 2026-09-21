@@ -898,7 +898,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
       return (
         <div
           ref={fabDrag.containerRef}
-          className="filly-pop-in fixed right-4 bottom-4 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6"
+          className="filly-pop-in fixed right-4 bottom-2 z-40 flex flex-col items-end gap-3 sm:right-6 sm:bottom-4"
           style={fabDragStyle}
           onPointerDown={fabDrag.onPointerDown}
           onClickCapture={fabDrag.onClickCapture}
@@ -1193,7 +1193,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
     return (
       <div
         ref={fabDrag.containerRef}
-        className="filly-pop-in fixed right-4 bottom-4 z-9999 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6"
+        className="filly-pop-in fixed right-4 bottom-2 z-9999 flex flex-col items-end gap-3 sm:right-6 sm:bottom-4"
         style={fabDragStyle}
         onPointerDown={fabDrag.onPointerDown}
         onClickCapture={fabDrag.onClickCapture}
@@ -1497,7 +1497,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
     <>
       <div
         ref={fabDrag.containerRef}
-        className="filly-pop-in fixed right-4 bottom-4 z-9999 w-80 sm:right-6 sm:bottom-6"
+        className="filly-pop-in fixed right-4 bottom-2 z-9999 w-80 sm:right-6 sm:bottom-4"
         style={fabDragStyle}
       >
         {MASCOT_ENABLED && (
