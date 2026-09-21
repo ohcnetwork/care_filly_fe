@@ -15,6 +15,8 @@ export interface FormField {
   label: string;
   type: string;
   options?: string[];
+  /** True for a choice question that accepts more than one selection. */
+  repeats?: boolean;
   /** The CARE question's own help text, if the form author set one. */
   description?: string;
   /** Set for a structured question — mutually exclusive with `options`. */
@@ -50,6 +52,7 @@ export function extractFormFields(forms: ScribeFormSummary[]): FormField[] {
         label: q.text,
         type: q.type,
         ...(q.options?.length && { options: q.options }),
+        ...(q.repeats && { repeats: true }),
         ...(q.description && { description: q.description }),
       });
     }
@@ -140,20 +143,50 @@ export function buildFieldSpecs(fields: FormField[]): MedispeakFieldSpec[] {
         ),
       );
     } else if (f.type === "choice" && f.options?.length) {
-      specs.push({
-        key: f.label,
-        label: f.label,
-        type: "single_select",
-        enum: f.options,
-        description: withHelpText(f),
-      });
+      specs.push(
+        f.repeats
+          ? {
+              key: f.label,
+              label: f.label,
+              type: "multi_select",
+              enum: f.options,
+              description: withHelpText(
+                f,
+                `Select all that apply from: ${f.options.join(", ")}. This question allows multiple selections — include every option the clinician mentioned, not just the first.`,
+              ),
+            }
+          : {
+              key: f.label,
+              label: f.label,
+              type: "single_select",
+              enum: f.options,
+              description: withHelpText(
+                f,
+                `Select exactly one of: ${f.options.join(", ")}.`,
+              ),
+            },
+      );
       specs.push(
         noteSpec(
           f.label,
           `Additional commentary about "${f.label}" beyond the selected ` +
-            "option, if explicitly mentioned.",
+            `option${f.repeats ? "s" : ""}, if explicitly mentioned.`,
         ),
       );
+    } else if (f.type === "choice") {
+      // Valueset-backed choice — CARE only surfaces inline `answer_option`
+      specs.push({
+        key: f.label,
+        label: f.label,
+        type: "string",
+        description: withHelpText(
+          f,
+          "A category/option the clinician selected from a coded list. " +
+            "There is no fixed set of choices available here — extract the " +
+            "clinician's own wording as-is, concise and clinical, without " +
+            "inventing or normalizing it into a different term.",
+        ),
+      });
     } else if (f.type === "date") {
       specs.push({
         key: f.label,

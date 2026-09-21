@@ -88,7 +88,25 @@ export interface FieldFill {
   structuredEntries?: unknown[];
   structuredNewCount?: number;
   matchedValue: string | number | boolean | null;
+  /** Set instead of `matchedValue` for a repeating (multi-select) choice
+   *  question — every option the clinician mentioned, not just the first. */
+  matchedValues?: (string | number)[];
   matchedNote: string | null;
+  /** True when the question already had an answer before this extraction
+   *  pass. Writing would REPLACE it wholesale (`questionnaire.response.set`
+   *  never appends), so it's held back for an explicit clinician
+   *  confirmation instead of being auto-applied like an unanswered field. */
+  needsConfirmation?: boolean;
+  /** The question's existing answer(s), shown next to the newly extracted
+   *  value so the clinician can compare before replacing it. */
+  existingValue?: string | null;
+  /** Raw existing answer values (only set alongside `matchedValues`) —
+   *  lets a repeating (multi-select) question be merged with the new
+   *  selections instead of only replaced or kept as-is. */
+  existingValues?: unknown[];
+  /** Set once the clinician explicitly chose to keep the existing answer
+   *  instead of replacing it with the newly extracted value. */
+  keptExisting?: boolean;
   /** Set once the write has been attempted and the host rejected it, or
    *  when extraction itself found a value but couldn't use it (e.g. an
    *  unresolvable structured lookup) — shown instead of a value so it's
@@ -187,6 +205,26 @@ export function matchVitalToQuestion(
   }
 
   return value;
+}
+
+/** Same lookup as `matchVitalToQuestion`, but for a repeating (multi-select)
+ *  choice question: `findMatchingLabel` runs with `scalarOnly=false` so a
+ *  `multi_select` field's array value isn't filtered out, then every
+ *  element is coerced to a scalar (a model that answers with a single
+ *  string for a multi-select field still works, wrapped as a 1-item list). */
+export function matchMultiVitalToQuestion(
+  questionText: string,
+  data: Record<string, unknown>,
+): string[] | null {
+  const label = findMatchingLabel(questionText, data, false);
+  if (!label) return null;
+
+  const raw = data[label];
+  const items = Array.isArray(raw) ? raw : [raw];
+  const values = items
+    .map((item) => extractScalarValue(item))
+    .filter((v): v is string => v !== null);
+  return values.length ? values : null;
 }
 
 export function matchNoteToQuestion(
@@ -345,6 +383,14 @@ function buildQuestionIndex(
   return index;
 }
 
+/** The question's already-saved answer(s), as plain text for comparison
+ *  against a freshly extracted value/values — `null` if unanswered. */
+function formatExistingAnswer(values: unknown[] | undefined): string | null {
+  if (!values?.length) return null;
+  const text = values.map((v) => String(v)).join(", ");
+  return text.trim() || null;
+}
+
 /**
  * Match extracted `data` onto the open session's writable questions.
  * `forms` is `questionnaire.forms.list`'s result. A currently-disabled
@@ -396,6 +442,42 @@ export async function collectFieldsToFill(
 
       if (!WRITABLE_TYPES.has(question.type)) continue;
 
+      if (question.type === "choice" && question.repeats) {
+        const rawValues = matchMultiVitalToQuestion(question.text, data);
+        const matchedNote = matchNoteToQuestion(question.text, data);
+        // "not_mentioned" is a sentinel meaning "no answer was given" —
+        // never insert it as if it were a real selection.
+        const matchedValues = rawValues?.filter(
+          (v) => v.toLowerCase() !== BOOLEAN_NOT_MENTIONED,
+        );
+
+        if (!matchedValues?.length) {
+          if (matchedNote === null || question.answered) continue;
+        }
+
+        const existingValue = formatExistingAnswer(question.values);
+        const needsConfirmation =
+          !!matchedValues?.length &&
+          question.answered &&
+          existingValue !== matchedValues.join(", ");
+
+        fieldsToFill.push({
+          questionnaireId: form.questionnaire_id,
+          linkId: question.link_id,
+          questionType: question.type,
+          label: question.text,
+          matchedValue: null,
+          matchedValues: matchedValues?.length ? matchedValues : undefined,
+          matchedNote,
+          ...(needsConfirmation && {
+            needsConfirmation,
+            existingValue,
+            existingValues: question.values,
+          }),
+        });
+        continue;
+      }
+
       const rawValue = matchVitalToQuestion(question.text, data);
       const matchedNote = matchNoteToQuestion(question.text, data);
       // "not_mentioned" is a sentinel meaning "no answer was given" — never
@@ -411,6 +493,12 @@ export async function collectFieldsToFill(
         if (matchedNote === null || question.answered) continue;
       }
 
+      const existingValue = formatExistingAnswer(question.values);
+      const needsConfirmation =
+        matchedValue !== null &&
+        question.answered &&
+        existingValue !== String(matchedValue);
+
       fieldsToFill.push({
         questionnaireId: form.questionnaire_id,
         linkId: question.link_id,
@@ -418,6 +506,7 @@ export async function collectFieldsToFill(
         label: question.text,
         matchedValue,
         matchedNote,
+        ...(needsConfirmation && { needsConfirmation, existingValue }),
       });
     }
   }
@@ -546,9 +635,11 @@ export function buildSetResponseInput(field: FieldFill): SetResponseInput {
     link_id: field.linkId,
     values: field.structuredType
       ? sanitizeStructuredEntries(field.structuredEntries ?? [])
-      : field.matchedValue !== null
-        ? [field.matchedValue]
-        : [],
+      : field.matchedValues?.length
+        ? field.matchedValues
+        : field.matchedValue !== null
+          ? [field.matchedValue]
+          : [],
     ...(field.matchedNote !== null && { note: field.matchedNote }),
   };
 }

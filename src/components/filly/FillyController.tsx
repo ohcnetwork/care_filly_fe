@@ -1,7 +1,9 @@
 import {
+  ArrowRightLeft,
   Check,
   CheckCircle2,
   ChevronDown,
+  Combine,
   FileText,
   Loader2,
   Mic,
@@ -54,11 +56,18 @@ interface FillyControllerProps {
   invoke?: ScribeInvoke;
 }
 
+// Opt-out 3D mascot experience — on by default, replacing the plain
+// icon-based widget with the animated character. Resolved at call time
+// (never module scope — the plugin config global is assigned by CARE's
+// host after mount, see `readPluginConfig`), preferring the host's plugin
+// config over the build-time `REACT_ENABLE_FILLY_MASCOT` env var. Set
+// either to the literal string "false" to fall back to the plain
+// icon-based UI.
 function resolveMascotEnabled(): boolean {
   const configured =
     readPluginConfig("ENABLE_FILLY_MASCOT") ??
     (import.meta.env.REACT_ENABLE_FILLY_MASCOT as string | undefined);
-  return configured === "true";
+  return configured !== "false";
 }
 
 const FIELD_FILL_DELAY_MS = 500;
@@ -553,6 +562,10 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
         setAppliedFields(fieldsToFill);
 
         fieldsToFill.forEach((field, index) => {
+          // Held back for an explicit clinician confirmation instead —
+          // see `handleConfirmReplace`/`handleKeepExisting` below.
+          if (field.needsConfirmation) return;
+
           const timeoutId = setTimeout(() => {
             if (field.structuredType && field.structuredEntries === undefined) {
               highlightFieldByLabel(field.label, !!field.error);
@@ -594,6 +607,106 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
       }
     },
     [actions, invoke],
+  );
+
+  // Writes a field held back by `needsConfirmation`, replacing the
+  // question's existing answer — only fires on the clinician's own click.
+  const handleConfirmReplace = useCallback(
+    (index: number) => {
+      if (!invoke) return;
+      const field = appliedFields[index];
+      if (!field) return;
+      void invoke(
+        "questionnaire.response.set",
+        buildSetResponseInput(field),
+      ).then((outcome) => {
+        setAppliedFields((current) =>
+          current.map((f, i) =>
+            i === index
+              ? {
+                  ...f,
+                  needsConfirmation: false,
+                  error: outcome.ok ? undefined : outcome.error,
+                }
+              : f,
+          ),
+        );
+        highlightFieldByLabel(field.label, !outcome.ok);
+        setFilledCount((c) => c + 1);
+        if (outcome.ok && field.structuredType === "service_request") {
+          expandServiceRequestRows(field.label, field.structuredEntries);
+        }
+        if (outcome.ok && field.structuredType === "medication_request") {
+          revealMedicationAdvancedFields(field.label, field.structuredEntries);
+        }
+      });
+    },
+    [invoke, appliedFields],
+  );
+
+  // Leaves the question's existing answer untouched — nothing is written.
+  const handleKeepExisting = useCallback((index: number) => {
+    setAppliedFields((current) =>
+      current.map((f, i) =>
+        i === index
+          ? { ...f, needsConfirmation: false, keptExisting: true }
+          : f,
+      ),
+    );
+  }, []);
+
+  // Merges the existing answer with the newly extracted one instead of
+  // choosing one over the other. For a repeating (multi-select) question
+  // this unions the selections; for a free-text question this appends the
+  // new text after the existing text. Any other question type can only
+  // hold one value, so this option isn't offered there.
+  const handleKeepBoth = useCallback(
+    (index: number) => {
+      if (!invoke) return;
+      const field = appliedFields[index];
+      if (!field) return;
+
+      let updated: FieldFill;
+      if (field.matchedValues?.length) {
+        const existing = (field.existingValues ?? []).map(String);
+        const merged = Array.from(
+          new Set([...existing, ...field.matchedValues]),
+        );
+        updated = { ...field, matchedValues: merged };
+      } else if (
+        (field.questionType === "string" || field.questionType === "text") &&
+        typeof field.matchedValue === "string"
+      ) {
+        const merged = [field.existingValue, field.matchedValue]
+          .filter((v): v is string => !!v)
+          .join(", ");
+        updated = { ...field, matchedValue: merged };
+      } else {
+        return;
+      }
+
+      void invoke(
+        "questionnaire.response.set",
+        buildSetResponseInput(updated),
+      ).then((outcome) => {
+        setAppliedFields((current) =>
+          current.map((f, i) =>
+            i === index
+              ? {
+                  ...f,
+                  needsConfirmation: false,
+                  matchedValue: updated.matchedValue,
+                  matchedValues: updated.matchedValues,
+                  error: outcome.ok ? undefined : outcome.error,
+                }
+              : f,
+          ),
+        );
+        highlightFieldByLabel(field.label, !outcome.ok);
+        setFilledCount((c) => c + 1);
+      });
+    },
+    [invoke, appliedFields],
   );
 
   const [liveTranscript, setLiveTranscript] = useState<string>("");
@@ -1517,44 +1630,115 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
                       {t("no_matching_fields")}
                     </p>
                   ) : (
-                    appliedFields.map((field, i) => (
-                      <button
-                        key={`${field.linkId}-${i}`}
-                        type="button"
-                        onClick={() =>
-                          highlightFieldByLabel(field.label, !!field.error)
-                        }
-                        title={t("go_to_field")}
-                        className={cn(
-                          "flex w-full items-center justify-between rounded px-2 py-1 text-left transition-colors",
-                          field.error
-                            ? "bg-amber-50 hover:bg-amber-100"
-                            : "bg-gray-50 hover:bg-gray-100",
-                        )}
-                      >
-                        <span className="text-xs text-gray-500 mr-5">
-                          {field.label}
-                        </span>
-                        {field.error ? (
-                          <span className="text-xs font-medium text-amber-700">
-                            {field.error}
-                          </span>
-                        ) : (
-                          <span className="text-xs font-medium text-gray-900">
-                            {field.structuredEntries
-                              ? t("n_filled", {
-                                  n: field.structuredNewCount ?? 0,
-                                })
-                              : (field.matchedValue ?? t("n_filled", { n: 1 }))}
-                            {field.matchedNote && (
-                              <span className="ml-1 font-normal text-gray-500">
-                                ({field.matchedNote})
-                              </span>
+                    appliedFields.map((field, i) =>
+                      field.needsConfirmation ? (
+                        <div
+                          key={`${field.linkId}-${i}`}
+                          className="rounded bg-amber-50 px-2 py-1.5"
+                        >
+                          <p className="text-xs font-medium text-gray-700">
+                            {field.label}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-gray-500">
+                            {t("already_answered")}:{" "}
+                            <span className="font-medium text-gray-700">
+                              {field.existingValue}
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-gray-500">
+                            {t("new_value")}:{" "}
+                            <span className="font-medium text-gray-900">
+                              {field.matchedValues?.length
+                                ? field.matchedValues.join(", ")
+                                : field.matchedValue}
+                            </span>
+                          </p>
+                          <div className="mt-1.5 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmReplace(i)}
+                              className="flex items-center gap-1 rounded-full bg-primary-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-primary-700"
+                            >
+                              <ArrowRightLeft className="h-2.5 w-2.5" />
+                              {t("replace")}
+                            </button>
+                            {(!!field.matchedValues?.length ||
+                              ((field.questionType === "string" ||
+                                field.questionType === "text") &&
+                                typeof field.matchedValue === "string")) && (
+                              <button
+                                type="button"
+                                onClick={() => handleKeepBoth(i)}
+                                className="flex items-center gap-1 rounded-full bg-primary-100 px-2.5 py-1 text-[11px] font-semibold text-primary-700 hover:bg-primary-200"
+                              >
+                                <Combine className="h-2.5 w-2.5" />
+                                {t("keep_both")}
+                              </button>
                             )}
+                            <button
+                              type="button"
+                              onClick={() => handleKeepExisting(i)}
+                              className="flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-200"
+                            >
+                              <Check className="h-2.5 w-2.5" />
+                              {t("keep_existing")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : field.keptExisting ? (
+                        <div
+                          key={`${field.linkId}-${i}`}
+                          className="flex items-center justify-between rounded bg-gray-50 px-2 py-1"
+                        >
+                          <span className="text-xs text-gray-500 mr-5">
+                            {field.label}
                           </span>
-                        )}
-                      </button>
-                    ))
+                          <span className="text-xs text-gray-400 italic">
+                            {t("kept_existing_answer")}
+                          </span>
+                        </div>
+                      ) : (
+                        <button
+                          key={`${field.linkId}-${i}`}
+                          type="button"
+                          onClick={() =>
+                            highlightFieldByLabel(field.label, !!field.error)
+                          }
+                          title={t("go_to_field")}
+                          className={cn(
+                            "flex w-full items-center justify-between rounded px-2 py-1 text-left transition-colors",
+                            field.error
+                              ? "bg-amber-50 hover:bg-amber-100"
+                              : "bg-gray-50 hover:bg-gray-100",
+                          )}
+                        >
+                          <span className="text-xs text-gray-500 mr-5">
+                            {field.label}
+                          </span>
+                          {field.error ? (
+                            <span className="text-xs font-medium text-amber-700">
+                              {field.error}
+                            </span>
+                          ) : (
+                            <span className="text-xs font-medium text-gray-900">
+                              {field.structuredEntries
+                                ? t("n_filled", {
+                                    n: field.structuredNewCount ?? 0,
+                                  })
+                                : field.matchedValues?.length
+                                  ? field.matchedValues.join(", ")
+                                  : (field.matchedValue ??
+                                    t("n_filled", { n: 1 }))}
+                              {field.matchedNote && (
+                                <span className="ml-1 font-normal text-gray-500">
+                                  ({field.matchedNote})
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </button>
+                      ),
+                    )
                   )}
                 </div>
               </div>

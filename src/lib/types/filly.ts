@@ -49,6 +49,10 @@ export interface ScribeQuestionSummary {
   type: string;
   required: boolean;
   options?: string[];
+  /** True for a choice question that accepts more than one selection
+   *  (care_fe's `Question.repeats`) — extracted as a list and written as
+   *  a `values` array in one `questionnaire.response.set` call. */
+  repeats?: boolean;
   /** The question's own help text, if the form author set one. */
   description?: string;
   /** Set for a structured question (medication_request, diagnosis, etc.) */
