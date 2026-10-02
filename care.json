@@ -1,0 +1,29 @@
+{
+  "id": "care-filly",
+  "name": "CARE Filly",
+  "description": "AI-powered clinical dictation and form filling for CARE. Filly enables clinicians to dictate clinical information and automatically structure it into CARE forms, reducing manual documentation and improving clinical workflows.",
+  "publisher": "ohcnetwork",
+  "license": "MIT",
+  "icon": "./assets/icon.svg",
+  "categories": [
+    "ai",
+    "productivity",
+    "asr"
+  ],
+
+  "frontend": {
+    "url": "https://care-3-1.care-filly-fe.pages.dev/assets/remoteEntry.js",
+    "name": "care_filly_fe",
+    "plug": "care_filly_fe",
+
+    "config": {
+      "FILLY_LANGUAGES": "ta,en,ml",
+      "ENABLE_FILLY_MASCOT": "true",
+      "REACT_MEDISPEAK_API_URL": "https://medispeak.ohc.network/api/v2"
+    }
+  },
+
+  "backend": {
+    "healthCheck": "/api/care_filly/healthz"
+  }
+}
