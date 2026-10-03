@@ -4,7 +4,7 @@
   "description": "AI-powered clinical dictation and form filling for CARE. Filly enables clinicians to dictate clinical information and automatically structure it into CARE forms, reducing manual documentation and improving clinical workflows.",
   "publisher": "ohcnetwork",
   "license": "MIT",
-  "icon": "./assets/icon.svg",
+  "icon": "https://care-3-1.care-filly-fe.pages.dev/assets/icon.svg",
   "categories": [
     "ai",
     "productivity",
