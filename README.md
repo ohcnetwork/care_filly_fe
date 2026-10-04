@@ -4,7 +4,32 @@
 
 `care_filly_fe` is a **Care Frontend plugin** that brings AI **Filly** capabilities to OHCN's EMR. A clinician records a consultation, the audio is transcribed and structured by the [Medispeak](https://medispeak.ohc.network) API, and the extracted values are automatically matched and filled into CARE questionnaire forms — saving manual data entry and letting clinicians focus on the patient.
 
-It runs as a **Vite Module Federation remote** loaded by [`care_fe`](https://github.com/ohcnetwork/care_fe) and adds a floating microphone control that records, transcribes, and auto-fills forms.
+## Install from the CARE App Store
+
+The App Store package installs the Filly frontend. It does not install or
+configure the `care_filly` backend plugin, which is required to create
+Medispeak sessions and mint scoped browser tokens.
+
+1. Create or obtain a [Medispeak account](https://medispeak.ohc.network) and ask Medispeak for the account API
+  key and API base URL for your deployment.
+2. Install and enable the `care_filly` backend plugin in your CARE backend
+  deployment. Configure `MEDISPEAK_BASE_URL` and `MEDISPEAK_API_KEY` in the
+  backend's `care_filly` plugin configuration (`PLUGIN_CONFIGS`) or backend
+  environment. Run the plugin migrations and restart/deploy the backend as
+  required by your deployment process.
+3. Keep `MEDISPEAK_API_KEY` on the backend. Do not put it in the App Store
+  frontend configuration, frontend environment, or a browser build. The
+  backend uses it to create sessions and issue short-lived scoped tokens.
+4. Install Filly from the CARE App Store. Set the frontend
+  `MEDISPEAK_API_URL` plugin config to the Medispeak v2 API root. This is a
+  public API URL, not the account secret. The package's backend health check
+  is `/api/care_filly/healthz`; it requires the backend plugin to be present.
+5. Grant Filly users the `can_use_filly` facility permission. Each user must
+  also enable Filly from their user menu's **Filly** settings page.
+
+The health check confirms that the backend plugin is installed; it does not
+validate the Medispeak credentials. Missing or invalid backend credentials
+will prevent session creation.
 
 ---
 
@@ -152,7 +177,7 @@ To reset it back to its default corner:
 - **Node.js ≥ 22.9.0**
 - A running **[care_fe](https://github.com/ohcnetwork/care_fe)** instance configured to load this plugin
 - The **[care_filly](https://github.com/ohcnetwork/care_filly)** CARE backend plugin — auto-detected via `window.CARE_API_URL`, served under `/api/care_filly/v1`
-- A **Medispeak** API root and account key (the key goes on the backend, never here)
+- A **Medispeak** account with an API root and account key (the key goes on the backend, never here)
 
 ### Setup
 
