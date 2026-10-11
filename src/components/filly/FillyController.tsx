@@ -38,6 +38,10 @@ import { useFilly } from "@/hooks/useFilly";
 import { useFillyLanguage } from "@/hooks/useFillyLanguage";
 import { useFillyPreference } from "@/hooks/useFillyPreference";
 import { useMicrophoneDevices } from "@/hooks/useMicrophoneDevices";
+import {
+  isSystemAudioSupported,
+  useSystemAudioPreference,
+} from "@/hooks/useSystemAudioPreference";
 import { useTranslation } from "@/hooks/useTranslation";
 
 interface FillyControllerProps {
@@ -374,6 +378,7 @@ function FillyControllerInner({
   const micMenuRef = useRef<HTMLDivElement>(null);
   const mic = useMicrophoneDevices(micMenuOpen);
   const fillyLanguage = useFillyLanguage();
+  const systemAudio = useSystemAudioPreference();
 
   useEffect(() => {
     if (!micMenuOpen) return;
@@ -568,7 +573,10 @@ function FillyControllerInner({
     setTranscriptMinimized(false);
     setEditingTranscript(false);
     setDraftTranscript("");
-    await filly.startRecording({ language: [fillyLanguage.language] });
+    await filly.startRecording({
+      language: [fillyLanguage.language],
+      includeSystemAudio: systemAudio.enabled,
+    });
   };
 
   const handleStart = async () => {
@@ -695,6 +703,38 @@ function FillyControllerInner({
                   })
                 )}
               </div>
+              {isSystemAudioSupported && (
+                <div className="border-t border-gray-100 p-1">
+                  <button
+                    onClick={() => systemAudio.setEnabled(!systemAudio.enabled)}
+                    role="switch"
+                    aria-checked={systemAudio.enabled}
+                    title={t("system_audio_description")}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs",
+                      systemAudio.enabled
+                        ? "bg-primary-50 font-medium text-primary-700"
+                        : "text-gray-600 hover:bg-gray-50",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border",
+                        systemAudio.enabled
+                          ? "border-primary-600 bg-primary-600"
+                          : "border-gray-300 bg-white",
+                      )}
+                    >
+                      {systemAudio.enabled && (
+                        <Check className="h-2.5 w-2.5 text-white" />
+                      )}
+                    </span>
+                    <span className="truncate">
+                      {t("include_system_audio")}
+                    </span>
+                  </button>
+                </div>
+              )}
               <div className="border-y border-gray-100 px-3 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase bg-linear-to-r from-primary-100 to-transparent">
                 {t("language")}
               </div>

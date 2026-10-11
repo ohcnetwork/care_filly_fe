@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { VadRecorder } from "@/lib/filly-engine";
+import {
+  SystemAudioUnavailableError,
+  VadRecorder,
+  requestSystemAudioStream,
+} from "@/lib/filly-engine";
 import {
   MedispeakApiError,
   type MedispeakResult,
@@ -42,7 +46,13 @@ const FILLY_LANGUAGES: string[] = (
  * in the current context.") or browser-specific jargon. Map the well-known
  * mic-access failure cases to a message a clinician can actually act on.
  */
-function describeRecordingError(err: unknown): string {
+function describeRecordingError(err: unknown, systemAudio = false): string {
+  if (err instanceof SystemAudioUnavailableError) return err.message;
+  if (systemAudio && err instanceof DOMException) {
+    if (err.name === "NotAllowedError" || err.name === "AbortError") {
+      return "Screen/tab sharing was cancelled. Share the call's tab with audio, or turn off system audio capture in Filly settings.";
+    }
+  }
   if (err instanceof DOMException) {
     switch (err.name) {
       case "NotAllowedError":
@@ -85,6 +95,8 @@ interface StartOptions {
   encounterId?: string;
   templateIds?: string[];
   language?: string[];
+  /** Also capture system/tab audio (e.g. the remote side of a call). */
+  includeSystemAudio?: boolean;
 }
 
 interface UseFillyOptions {
@@ -251,7 +263,16 @@ export function useFilly({
   const startRecording = useCallback(
     async (options?: StartOptions) => {
       setIsStarting(true);
+      let systemStream: MediaStream | undefined;
+      let systemStage = false;
       try {
+        // Must run before any other await so the click's user activation
+        // is still valid for getDisplayMedia.
+        if (options?.includeSystemAudio) {
+          systemStage = true;
+          systemStream = await requestSystemAudioStream();
+          systemStage = false;
+        }
         setError(null);
         setResult(null);
         pendingUploadsRef.current = [];
@@ -278,16 +299,18 @@ export function useFilly({
           },
         });
         recorderRef.current = recorder;
-        await recorder.start(
-          (await resolvePreferredMicDeviceId()) ?? undefined,
-        );
+        const deviceId = (await resolvePreferredMicDeviceId()) ?? undefined;
+        const ownedStream = systemStream;
+        systemStream = undefined; // recorder owns it from here
+        await recorder.start(deviceId, ownedStream);
 
         updateStatus("recording");
         startTimer();
       } catch (err) {
+        systemStream?.getTracks().forEach((track) => track.stop());
         recorderRef.current?.cancel();
         recorderRef.current = null;
-        const message = describeRecordingError(err);
+        const message = describeRecordingError(err, systemStage);
         setError(message);
         updateStatus("failed");
         onError?.(err instanceof Error ? err : new Error(message));
