@@ -14,14 +14,14 @@ interface UseAudioSourcePreferenceReturn {
 }
 
 /**
- * Persists the clinician's audio-source choice (per-user): mic-only
- * (default), or mic + system/tab audio for telemedicine calls where the
- * patient's side of the conversation plays back as system audio rather
- * than through the clinician's own microphone. No `getUserMedia` call is
+ * Persists the clinician's audio-source choice (per-user): mic + system/tab
+ * audio (default) for telemedicine calls where the patient's side of the
+ * conversation plays back as system audio rather than through the
+ * clinician's own microphone, or mic-only. No `getUserMedia` call is
  * needed here (unlike `useMicrophoneDevices`), so no `enabled` gate.
  */
 export function useAudioSourcePreference(): UseAudioSourcePreferenceReturn {
-  const [mode, setMode] = useState<AudioSourceMode>("mic");
+  const [mode, setMode] = useState<AudioSourceMode>("mic_and_system");
   const [storageKey, setStorageKey] = useState<string | null>(null);
 
   useLayoutEffect(() => {
