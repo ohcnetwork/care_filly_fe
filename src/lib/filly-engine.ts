@@ -160,18 +160,27 @@ export class VadRecorder {
   /**
    * Prompts for system/tab audio via `getDisplayMedia` and mixes it with
    * `micStream` through a Web Audio graph so `MicVAD` sees a single merged
-   * stream. `video: true` is required by most browsers just to surface the
+   * stream. `video` is required by most browsers just to surface the
    * "Share audio" checkbox in the picker — the video track is stopped
    * immediately, keeping only the audio. Falls back to `micStream` alone
    * (non-fatal) if the user cancels/denies, or the shared source has no
    * audio track.
+   *
+   * `displaySurface`/`systemAudio` are Chrome/Edge-only *hints* (not yet in
+   * TS's DOM lib, hence the cast) that bias the native picker to default to
+   * "Entire screen" with "Share system audio" pre-checked — the browser
+   * owns that dialog, so this can never force a choice or skip consent;
+   * the clinician can still switch tabs or toggle audio off themselves.
    */
   private async mixInSystemAudio(micStream: MediaStream): Promise<MediaStream> {
     let display: MediaStream;
     try {
       display = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+        video: { displaySurface: "monitor" },
         audio: true,
+        systemAudio: "include",
+      } as DisplayMediaStreamOptions & {
+        systemAudio?: "include" | "exclude";
       });
     } catch (err) {
       if (DEBUG) console.warn("[Filly] system audio capture failed:", err);
