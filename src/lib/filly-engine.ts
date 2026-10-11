@@ -39,12 +39,30 @@ export interface VadRecorderCallbacks {
   onSpeechChunk: (wav: Blob, index: number) => void;
   /** Non-fatal engine error (mic denied, VAD load failure, …). */
   onError?: (error: Error) => void;
+  /**
+   * System/tab audio capture was requested but unavailable (cancelled
+   * picker, denied permission, or a shared source with no audio track).
+   * Non-fatal — recording continues on the microphone alone.
+   */
+  onSystemAudioUnavailable?: (reason: string) => void;
+}
+
+export interface StartRecordingOptions {
+  deviceId?: string;
+  /**
+   * Also mix in system/tab audio (e.g. a telemedicine call's patient-side
+   * audio played back through speakers), so a mic-only capture doesn't
+   * miss half the conversation.
+   */
+  captureSystemAudio?: boolean;
 }
 
 export class VadRecorder {
   private readonly callbacks: VadRecorderCallbacks;
   private vad: MicVAD | null = null;
-  private stream: MediaStream | null = null;
+  private micStream: MediaStream | null = null;
+  private displayStream: MediaStream | null = null;
+  private mixContext: AudioContext | null = null;
   private chunkIndex = 0;
   private paused = false;
 
@@ -52,9 +70,10 @@ export class VadRecorder {
     this.callbacks = callbacks;
   }
 
-  /** Open the mic and begin VAD segmentation. */
-  async start(deviceId?: string): Promise<void> {
-    this.stream = await navigator.mediaDevices.getUserMedia({
+  /** Open the mic (and optionally system audio) and begin VAD segmentation. */
+  async start(options: StartRecordingOptions = {}): Promise<void> {
+    const { deviceId, captureSystemAudio } = options;
+    this.micStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
@@ -64,8 +83,12 @@ export class VadRecorder {
       video: false,
     });
 
+    const vadStream = captureSystemAudio
+      ? await this.mixInSystemAudio(this.micStream)
+      : this.micStream;
+
     this.vad = await MicVAD.new({
-      stream: this.stream,
+      stream: vadStream,
       model: "v5",
       // Slightly sticky end-of-speech so natural pauses inside a sentence
       // don't split a single thought into several chunks.
@@ -134,8 +157,55 @@ export class VadRecorder {
     this.vad = null;
   }
 
+  /**
+   * Prompts for system/tab audio via `getDisplayMedia` and mixes it with
+   * `micStream` through a Web Audio graph so `MicVAD` sees a single merged
+   * stream. `video: true` is required by most browsers just to surface the
+   * "Share audio" checkbox in the picker — the video track is stopped
+   * immediately, keeping only the audio. Falls back to `micStream` alone
+   * (non-fatal) if the user cancels/denies, or the shared source has no
+   * audio track.
+   */
+  private async mixInSystemAudio(micStream: MediaStream): Promise<MediaStream> {
+    let display: MediaStream;
+    try {
+      display = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
+    } catch (err) {
+      if (DEBUG) console.warn("[Filly] system audio capture failed:", err);
+      this.callbacks.onSystemAudioUnavailable?.(
+        "Screen/tab-audio sharing was cancelled or denied.",
+      );
+      return micStream;
+    }
+
+    display.getVideoTracks().forEach((track) => track.stop());
+    if (display.getAudioTracks().length === 0) {
+      this.callbacks.onSystemAudioUnavailable?.(
+        "The shared source had no audio track.",
+      );
+      return micStream;
+    }
+
+    this.displayStream = display;
+    const context = new AudioContext();
+    const destination = context.createMediaStreamDestination();
+    context.createMediaStreamSource(micStream).connect(destination);
+    context.createMediaStreamSource(display).connect(destination);
+    this.mixContext = context;
+    return destination.stream;
+  }
+
   private releaseStream(): void {
-    this.stream?.getTracks().forEach((track) => track.stop());
-    this.stream = null;
+    this.micStream?.getTracks().forEach((track) => track.stop());
+    this.micStream = null;
+    this.displayStream?.getTracks().forEach((track) => track.stop());
+    this.displayStream = null;
+    if (this.mixContext) {
+      this.mixContext.close().catch(() => {});
+      this.mixContext = null;
+    }
   }
 }

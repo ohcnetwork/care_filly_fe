@@ -13,7 +13,10 @@ import {
   retryMedispeakSession,
   uploadMedispeakSegment,
 } from "@/lib/medispeak-api";
-import { resolvePreferredMicDeviceId } from "@/lib/mic-preference";
+import {
+  resolvePreferredAudioSource,
+  resolvePreferredMicDeviceId,
+} from "@/lib/mic-preference";
 import { getFacilityIdFromUrl } from "@/lib/structured/care-api";
 import {
   type FormField,
@@ -105,6 +108,13 @@ interface UseFillyReturn {
   duration: number;
   result: FillyResult | null;
   error: string | null;
+  /**
+   * Non-fatal: system audio was requested but couldn't be captured, so
+   * recording fell back to the microphone alone. Cleared on the next
+   * `startRecording`/`reset`. Kept separate from `error` since it must
+   * never flip `status` to "failed".
+   */
+  systemAudioWarning: string | null;
   startRecording: (options?: StartOptions) => Promise<void>;
   pauseRecording: () => void;
   resumeRecording: () => void;
@@ -127,6 +137,9 @@ export function useFilly({
   const [duration, setDuration] = useState(0);
   const [result, setResult] = useState<FillyResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [systemAudioWarning, setSystemAudioWarning] = useState<string | null>(
+    null,
+  );
 
   const recorderRef = useRef<VadRecorder | null>(null);
   const medispeakHandleRef = useRef<MedispeakSessionHandle | null>(null);
@@ -253,6 +266,7 @@ export function useFilly({
       setIsStarting(true);
       try {
         setError(null);
+        setSystemAudioWarning(null);
         setResult(null);
         pendingUploadsRef.current = [];
         accumulatedRef.current = 0;
@@ -276,11 +290,19 @@ export function useFilly({
             setError(describeRecordingError(err));
             onErrorRef.current?.(err);
           },
+          onSystemAudioUnavailable: (reason) => {
+            setSystemAudioWarning(reason);
+          },
         });
         recorderRef.current = recorder;
-        await recorder.start(
-          (await resolvePreferredMicDeviceId()) ?? undefined,
-        );
+        const [deviceId, audioSourceMode] = await Promise.all([
+          resolvePreferredMicDeviceId(),
+          resolvePreferredAudioSource(),
+        ]);
+        await recorder.start({
+          deviceId: deviceId ?? undefined,
+          captureSystemAudio: audioSourceMode === "mic_and_system",
+        });
 
         updateStatus("recording");
         startTimer();
@@ -396,6 +418,7 @@ export function useFilly({
     stopTimer();
     accumulatedRef.current = 0;
     setDuration(0);
+    setSystemAudioWarning(null);
     updateStatus("idle");
   }, [stopTimer, updateStatus]);
 
@@ -410,6 +433,7 @@ export function useFilly({
     setDuration(0);
     setResult(null);
     setError(null);
+    setSystemAudioWarning(null);
     updateStatus("idle");
   }, [stopTimer, updateStatus]);
 
@@ -421,6 +445,7 @@ export function useFilly({
     duration,
     result,
     error,
+    systemAudioWarning,
     startRecording,
     pauseRecording,
     resumeRecording,

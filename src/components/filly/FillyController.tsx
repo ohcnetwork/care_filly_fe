@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 
+import { useAudioSourcePreference } from "@/hooks/useAudioSourcePreference";
 import { useFilly } from "@/hooks/useFilly";
 import { useFillyLanguage } from "@/hooks/useFillyLanguage";
 import { useFillyPreference } from "@/hooks/useFillyPreference";
@@ -374,6 +375,7 @@ function FillyControllerInner({
   const micMenuRef = useRef<HTMLDivElement>(null);
   const mic = useMicrophoneDevices(micMenuOpen);
   const fillyLanguage = useFillyLanguage();
+  const audioSource = useAudioSourcePreference();
 
   useEffect(() => {
     if (!micMenuOpen) return;
@@ -694,6 +696,51 @@ function FillyControllerInner({
                     );
                   })
                 )}
+              </div>
+              <div className="border-y border-gray-100 px-3 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase bg-linear-to-r from-primary-100 to-transparent">
+                {t("audio_source")}
+              </div>
+              <div className="p-1">
+                <p className="px-2 pt-1 pb-1.5 text-[11px] text-gray-500">
+                  {t("audio_source_description")}
+                </p>
+                {(
+                  [
+                    ["mic", "audio_source_mic_only"],
+                    ["mic_and_system", "audio_source_mic_and_system"],
+                  ] as const
+                ).map(([mode, labelKey]) => {
+                  const selected = mode === audioSource.mode;
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => {
+                        audioSource.selectMode(mode);
+                        setMicMenuOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs",
+                        selected
+                          ? "bg-primary-50 font-medium text-primary-700"
+                          : "text-gray-600 hover:bg-gray-50",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border",
+                          selected
+                            ? "border-primary-600 bg-primary-600"
+                            : "border-gray-300 bg-white",
+                        )}
+                      >
+                        {selected && (
+                          <Check className="h-2.5 w-2.5 text-white" />
+                        )}
+                      </span>
+                      <span className="truncate">{t(labelKey)}</span>
+                    </button>
+                  );
+                })}
               </div>
               <div className="border-y border-gray-100 px-3 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase bg-linear-to-r from-primary-100 to-transparent">
                 {t("language")}
@@ -1114,6 +1161,11 @@ function FillyControllerInner({
             {filly.error && (
               <p className="text-xs text-red-500 mt-1.5">{filly.error}</p>
             )}
+            {filly.systemAudioWarning && (
+              <p className="text-xs text-amber-600 mt-1.5">
+                {t("system_audio_unavailable")}
+              </p>
+            )}
           </div>
 
           {/* Footer */}
@@ -1278,8 +1330,7 @@ function expandServiceRequestRows(qId: string, structuredValue: unknown) {
 
     for (const item of structuredValue) {
       const sr = (item as Record<string, unknown> | null)?.service_request as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       const title = typeof sr?.title === "string" ? sr.title : undefined;
       const hasExtraDetails = !!(
         sr?.body_site ||
