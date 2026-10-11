@@ -34,3 +34,31 @@ export async function resolvePreferredMicDeviceId(): Promise<string | null> {
   const userId = await resolveCurrentUserId();
   return loadStoredMicDeviceId(micDeviceStorageKey(userId));
 }
+
+const SYSTEM_AUDIO_STORAGE_PREFIX = "care_filly_system_audio";
+
+/**
+ * Whether Filly should also capture system/tab audio (e.g. the remote party
+ * of a telemedicine call) alongside the microphone.
+ */
+export function systemAudioStorageKey(userId: string | null): string {
+  return userId
+    ? `${SYSTEM_AUDIO_STORAGE_PREFIX}:${userId}`
+    : SYSTEM_AUDIO_STORAGE_PREFIX;
+}
+
+export function loadStoredSystemAudio(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function storeSystemAudio(key: string, enabled: boolean): void {
+  try {
+    localStorage.setItem(key, String(enabled));
+  } catch {
+    // ignore storage errors (private mode, quota, etc.)
+  }
+}

@@ -41,10 +41,44 @@ export interface VadRecorderCallbacks {
   onError?: (error: Error) => void;
 }
 
+/**
+ * Prompt the user to share a tab/screen with audio so the remote side of a
+ * telemedicine call (played as system audio) is captured too. Must be called
+ * synchronously from a user gesture, before any other `await`, or browsers
+ * reject it for lacking transient activation.
+ *
+ * Browsers require a video track to be requested; it is stopped immediately
+ * since only the audio is used.
+ */
+export async function requestSystemAudioStream(): Promise<MediaStream> {
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: true,
+    audio: true,
+  });
+  stream.getVideoTracks().forEach((track) => track.stop());
+  if (stream.getAudioTracks().length === 0) {
+    stream.getTracks().forEach((track) => track.stop());
+    throw new SystemAudioUnavailableError();
+  }
+  return stream;
+}
+
+/** The user shared a source without ticking "Share audio". */
+export class SystemAudioUnavailableError extends Error {
+  constructor() {
+    super(
+      'No system audio was shared. Choose the call\'s tab or your screen and enable "Share audio" to record both sides of the call.',
+    );
+    this.name = "SystemAudioUnavailableError";
+  }
+}
+
 export class VadRecorder {
   private readonly callbacks: VadRecorderCallbacks;
   private vad: MicVAD | null = null;
   private stream: MediaStream | null = null;
+  private systemStream: MediaStream | null = null;
+  private audioContext: AudioContext | null = null;
   private chunkIndex = 0;
   private paused = false;
 
@@ -52,9 +86,15 @@ export class VadRecorder {
     this.callbacks = callbacks;
   }
 
-  /** Open the mic and begin VAD segmentation. */
-  async start(deviceId?: string): Promise<void> {
-    this.stream = await navigator.mediaDevices.getUserMedia({
+  /**
+   * Open the mic and begin VAD segmentation. When `systemStream` (from
+   * `requestSystemAudioStream`) is given, its audio is mixed with the mic so
+   * both sides of a call are transcribed. The recorder takes ownership of
+   * it and stops its tracks on stop/cancel.
+   */
+  async start(deviceId?: string, systemStream?: MediaStream): Promise<void> {
+    this.systemStream = systemStream ?? null;
+    const micStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
@@ -63,9 +103,14 @@ export class VadRecorder {
       },
       video: false,
     });
+    this.stream = micStream;
+
+    const vadStream = this.systemStream
+      ? this.mixStreams(micStream, this.systemStream)
+      : micStream;
 
     this.vad = await MicVAD.new({
-      stream: this.stream,
+      stream: vadStream,
       model: "v5",
       // Slightly sticky end-of-speech so natural pauses inside a sentence
       // don't split a single thought into several chunks.
@@ -134,8 +179,22 @@ export class VadRecorder {
     this.vad = null;
   }
 
+  /** Mix mic + system audio into a single stream for the VAD. */
+  private mixStreams(mic: MediaStream, system: MediaStream): MediaStream {
+    const ctx = new AudioContext();
+    const destination = ctx.createMediaStreamDestination();
+    ctx.createMediaStreamSource(mic).connect(destination);
+    ctx.createMediaStreamSource(system).connect(destination);
+    this.audioContext = ctx;
+    return destination.stream;
+  }
+
   private releaseStream(): void {
     this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
+    this.systemStream?.getTracks().forEach((track) => track.stop());
+    this.systemStream = null;
+    this.audioContext?.close().catch(() => {});
+    this.audioContext = null;
   }
 }
