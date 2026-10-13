@@ -36,7 +36,7 @@ export async function resolvePreferredMicDeviceId(): Promise<string | null> {
 }
 
 /**
- * `"mic"` records from the microphone only. `"mic_and_system"` (default)
+ * `"mic"` (default) records from the microphone only. `"mic_and_system"`
  * also mixes in system/tab audio — needed in telemedicine calls, where the
  * patient's voice plays back as system audio rather than through the
  * clinician's own microphone.
@@ -68,10 +68,8 @@ export function storeAudioSourceMode(key: string, mode: AudioSourceMode): void {
   }
 }
 
-/** The user's preferred audio source, defaulting to mic + system audio. */
+/** The user's preferred audio source, defaulting to mic-only. */
 export async function resolvePreferredAudioSource(): Promise<AudioSourceMode> {
   const userId = await resolveCurrentUserId();
-  return (
-    loadStoredAudioSourceMode(audioSourceStorageKey(userId)) ?? "mic_and_system"
-  );
+  return loadStoredAudioSourceMode(audioSourceStorageKey(userId)) ?? "mic";
 }
