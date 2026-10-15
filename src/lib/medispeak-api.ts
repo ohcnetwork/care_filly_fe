@@ -74,9 +74,7 @@ function requireMedispeakBase(): string {
 
 function requireFillyBase(): string {
   if (!FILLY_BASE_URL) {
-    throw new Error(
-      "No CARE API URL configured — set REACT_CARE_API_URL or REACT_CARE_URL_MAP, or load the plugin inside CARE.",
-    );
+    throw new Error("Filly backend is not configured.");
   }
   return FILLY_BASE_URL;
 }
