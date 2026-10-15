@@ -75,7 +75,7 @@ function requireMedispeakBase(): string {
 function requireFillyBase(): string {
   if (!FILLY_BASE_URL) {
     throw new Error(
-      "No filly backend configured — window.CARE_API_URL is not set (plugin must run inside CARE).",
+      "No CARE API URL configured — set REACT_CARE_API_URL or REACT_CARE_URL_MAP, or load the plugin inside CARE.",
     );
   }
   return FILLY_BASE_URL;
@@ -84,7 +84,9 @@ function requireFillyBase(): string {
 /** Verify that CARE has the care_filly backend plugin mounted. */
 export async function ensureFillyBackendAvailable(): Promise<{ ok: true }> {
   const response = await fetch(`${requireFillyBase()}/../healthz`);
-  const data = (await response.json().catch(() => null)) as { ok?: boolean } | null;
+  const data = (await response.json().catch(() => null)) as {
+    ok?: boolean;
+  } | null;
 
   if (!response.ok || data?.ok !== true) {
     throw new MedispeakApiError(

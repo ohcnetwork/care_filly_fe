@@ -1,3 +1,4 @@
+import { CARE_API_URL } from "@/lib/care-api-url";
 import { getHeaders } from "@/lib/request";
 
 import {
@@ -82,7 +83,7 @@ export interface HealthcareServiceMinimal {
 }
 
 export async function getCurrentUser(): Promise<CareUserMinimal | null> {
-  const baseUrl = window.CARE_API_URL;
+  const baseUrl = CARE_API_URL;
   if (!baseUrl) return null;
 
   try {
@@ -107,7 +108,7 @@ async function fetchProductKnowledge(
   name: string,
   facilityId: string,
 ): Promise<ProductKnowledgeBase[]> {
-  const baseUrl = window.CARE_API_URL;
+  const baseUrl = CARE_API_URL;
   if (!baseUrl || !name.trim()) return [];
 
   const url = new URL(`${baseUrl}/api/v1/product_knowledge/`);
@@ -153,7 +154,7 @@ async function fetchActivityDefinitions(
   facilityId: string,
   queryParams: Record<string, string>,
 ): Promise<ActivityDefinitionRead[]> {
-  const baseUrl = window.CARE_API_URL;
+  const baseUrl = CARE_API_URL;
   if (!baseUrl) return [];
 
   const url = new URL(
@@ -182,7 +183,7 @@ export async function retrieveActivityDefinition(
   facilityId: string,
   slug: string,
 ): Promise<ActivityDefinitionRead | null> {
-  const baseUrl = window.CARE_API_URL;
+  const baseUrl = CARE_API_URL;
   if (!baseUrl || !slug.trim()) return null;
 
   try {
@@ -227,7 +228,7 @@ export async function searchActivityDefinition(
 export async function getSchedulableUsers(
   facilityId: string,
 ): Promise<CareUserMinimal[]> {
-  const baseUrl = window.CARE_API_URL;
+  const baseUrl = CARE_API_URL;
   if (!baseUrl) return [];
 
   try {
@@ -249,7 +250,7 @@ export async function getSlotsForDay(
   resourceId: string,
   day: string,
 ): Promise<TokenSlotRead[]> {
-  const baseUrl = window.CARE_API_URL;
+  const baseUrl = CARE_API_URL;
   if (!baseUrl) return [];
 
   try {
@@ -277,7 +278,7 @@ export async function getLocations(
   facilityId: string,
   name?: string,
 ): Promise<LocationMinimal[]> {
-  const baseUrl = window.CARE_API_URL;
+  const baseUrl = CARE_API_URL;
   if (!baseUrl) return [];
 
   const url = new URL(`${baseUrl}/api/v1/facility/${facilityId}/location/`);
@@ -298,7 +299,7 @@ export async function getHealthcareServices(
   facilityId: string,
   name?: string,
 ): Promise<HealthcareServiceMinimal[]> {
-  const baseUrl = window.CARE_API_URL;
+  const baseUrl = CARE_API_URL;
   if (!baseUrl) return [];
 
   const url = new URL(

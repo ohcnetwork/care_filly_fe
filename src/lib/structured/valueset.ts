@@ -1,3 +1,4 @@
+import { CARE_API_URL } from "@/lib/care-api-url";
 import { getHeaders } from "@/lib/request";
 
 import { getFacilityIdFromUrl } from "./care-api";
@@ -21,7 +22,7 @@ export async function expandValueSet(
   search: string,
   count = 10,
 ): Promise<ValueSetExpandResult["results"]> {
-  const baseUrl = window.CARE_API_URL;
+  const baseUrl = CARE_API_URL;
   if (!baseUrl) {
     console.warn("[Filly] CARE_API_URL not set; cannot resolve SNOMED codes");
     return [];

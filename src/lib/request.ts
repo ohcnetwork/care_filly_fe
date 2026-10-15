@@ -1,3 +1,4 @@
+import { CARE_API_URL } from "@/lib/care-api-url";
 import { sleep } from "@/lib/utils";
 
 type QueryParamValue =
@@ -94,7 +95,7 @@ const getUrl = (
       path,
     );
   }
-  const url = new URL(path, baseUrl || window.CARE_API_URL);
+  const url = new URL(path, baseUrl || CARE_API_URL);
   if (query) {
     url.search = getQueryParams(query);
   }
