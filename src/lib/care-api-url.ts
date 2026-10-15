@@ -13,7 +13,8 @@ const resolveCareApiUrl = (): string => {
 
   const mappedUrl = apiUrlMap[window.location.origin];
   const fallbackUrl = import.meta.env.REACT_CARE_API_URL ?? "";
-  const careApiUrl = window.CARE_API_URL || mappedUrl || fallbackUrl;
+  const careApiUrl =
+    window.CARE_API_URL || mappedUrl || fallbackUrl || window.location.origin;
   window.CARE_API_URL = careApiUrl;
 
   return careApiUrl;
