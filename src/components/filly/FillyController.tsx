@@ -1223,7 +1223,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
                 </button>
               </div>
             </div>
-            <p className="max-h-28 overflow-y-auto px-3 py-2.5 text-xs leading-relaxed text-gray-600">
+            <p className="max-h-28 sm:max-h-[50vh] overflow-y-auto px-3 py-2.5 text-xs leading-relaxed text-gray-600">
               {transcript}
             </p>
           </div>
