@@ -70,8 +70,6 @@ function resolveMascotEnabled(): boolean {
   return configured !== "false";
 }
 
-const FIELD_FILL_DELAY_MS = 500;
-
 const PROCESSING_STEPS = [
   "transcribing_audio",
   "extracting_details",
@@ -566,10 +564,10 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
           // see `handleConfirmReplace`/`handleKeepExisting` below.
           if (field.needsConfirmation) return;
 
-          const timeoutId = setTimeout(() => {
+          const fillField = () => {
             if (field.structuredType && field.structuredEntries === undefined) {
               highlightFieldByLabel(field.label, !!field.error);
-              setFilledCount(index + 1);
+              setFilledCount((count) => count + 1);
               return;
             }
             void invoke(
@@ -584,7 +582,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
                 );
               }
               highlightFieldByLabel(field.label, !outcome.ok);
-              setFilledCount(index + 1);
+              setFilledCount((count) => count + 1);
               if (outcome.ok && field.structuredType === "service_request") {
                 expandServiceRequestRows(field.label, field.structuredEntries);
               }
@@ -595,8 +593,17 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
                 );
               }
             });
-          }, index * FIELD_FILL_DELAY_MS);
+          };
 
+          if (preference.fieldFillDelayMs === 0) {
+            fillField();
+            return;
+          }
+
+          const timeoutId = setTimeout(
+            fillField,
+            index * preference.fieldFillDelayMs,
+          );
           fillTimeoutsRef.current.push(timeoutId);
         });
       } catch (err) {
@@ -606,7 +613,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
         setIsResolvingFields(false);
       }
     },
-    [actions, invoke],
+    [actions, invoke, preference.fieldFillDelayMs],
   );
 
   // Writes a field held back by `needsConfirmation`, replacing the

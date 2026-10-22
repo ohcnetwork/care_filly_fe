@@ -5,6 +5,7 @@ import { resetFabPositionForCurrentUser } from "@/lib/fab-position";
 
 import { Button } from "@/components/ui/button";
 
+import FieldFillDelaySettings from "@/components/filly/FieldFillDelaySettings";
 import FillyProfileSection from "@/components/filly/FillyProfileSection";
 
 import { useTranslation } from "@/hooks/useTranslation";
@@ -70,6 +71,7 @@ export default function FillySettingsPage() {
           </div>
         </div>
       </section>
+      <FieldFillDelaySettings />
     </div>
   );
 }

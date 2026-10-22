@@ -154,6 +154,18 @@ role, enforced by the backend) and the user's own opt-in.
 2. **Use it.** The floating **Filly** button appears on questionnaire forms
    for that user.
 
+### Field filling speed
+
+On the **Filly** settings page, choose **Instant**, **Fast (100 ms)**, or
+**Normal (500 ms)** to control the delay between automatically filled fields.
+Normal preserves the existing behavior and is the default. Instant fills
+without a scheduled delay; field highlighting and review remain available.
+
+The selected delay is stored as `field_fill_delay_ms` alongside `enabled` in
+CARE core's `User.preferences.filly`. Changing either setting preserves the
+other. Existing answers still require explicit confirmation before replacement,
+regardless of the selected speed.
+
 ### Moving the Filly button
 
 The floating button can be **dragged** anywhere on screen — useful when it's
