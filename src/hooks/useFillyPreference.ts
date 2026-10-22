@@ -22,7 +22,7 @@ const CURRENT_USER_KEY = "currentUser";
 const FILLY_PREFERENCE_KEY = [CURRENT_USER_KEY, "filly"] as const;
 const FILLY_MUTATION_KEY = ["filly-preferences"] as const;
 
-export type FieldFillDelayMs = 0 | 200 | 500;
+export type FieldFillDelayMs = 0 | 100 | 500;
 
 interface FillyPreference {
   enabled: boolean;
@@ -103,7 +103,7 @@ export function useFillyPreference(): UseFillyPreferenceReturn {
 
   return {
     enabled: Boolean(filly.enabled),
-    fieldFillDelayMs: delay === 0 || delay === 200 ? delay : 500,
+    fieldFillDelayMs: delay === 0 || delay === 100 ? delay : 500,
     isLoading,
     error: error instanceof Error ? error.message : null,
     isSaving: mutation.isPending,
