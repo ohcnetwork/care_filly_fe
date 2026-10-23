@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { VadRecorder } from "@/lib/filly-engine";
+import { VadRecorder, preloadVad } from "@/lib/filly-engine";
 import {
   MedispeakApiError,
   type MedispeakResult,
@@ -135,6 +135,10 @@ export function useFilly({
 
   const recorderRef = useRef<VadRecorder | null>(null);
   const medispeakHandleRef = useRef<MedispeakSessionHandle | null>(null);
+  // Session setup runs in parallel with mic/VAD start; chunks wait on it.
+  const sessionPromiseRef = useRef<Promise<MedispeakSessionHandle> | null>(
+    null,
+  );
   const segmentSeqRef = useRef(0);
   const pendingUploadsRef = useRef<Promise<void>[]>([]);
 
@@ -176,6 +180,16 @@ export function useFilly({
     }
   }, []);
 
+  // Warm VAD assets once the widget is mounted and the browser is idle.
+  useEffect(() => {
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(preloadVad, { timeout: 5000 });
+      return () => cancelIdleCallback(id);
+    }
+    const id = setTimeout(preloadVad, 2000);
+    return () => clearTimeout(id);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -187,13 +201,15 @@ export function useFilly({
   // ── chunk uploads ────────────────────────────────────────────────────────
 
   const enqueueSegment = useCallback((wav: Blob) => {
-    const handle = medispeakHandleRef.current;
-    if (!handle) return;
+    const session = sessionPromiseRef.current;
+    if (!session) return;
     const seq = segmentSeqRef.current++;
-    const upload = uploadMedispeakSegment(handle, seq, wav).catch((err) => {
-      // Non-fatal — a dropped utterance only loses a little transcript.
-      if (DEBUG) console.warn("[Filly] segment upload failed:", seq, err);
-    });
+    const upload = session
+      .then((handle) => uploadMedispeakSegment(handle, seq, wav))
+      .catch((err) => {
+        // Non-fatal — a dropped utterance only loses a little transcript.
+        if (DEBUG) console.warn("[Filly] segment upload failed:", seq, err);
+      });
     pendingUploadsRef.current.push(upload);
   }, []);
 
@@ -277,16 +293,43 @@ export function useFilly({
         segmentSeqRef.current = 0;
         setDuration(0);
 
-        await ensureFillyBackendAvailable();
-
-        const { facilityId, formFields, language } =
-          await buildSessionExtras(options);
-
-        medispeakHandleRef.current = await createMedispeakSession({
-          facilityId,
-          fields: buildFieldSpecs(formFields),
-          language,
-        });
+        // Create the Medispeak session in parallel with mic/VAD start so the
+        // network round-trips don't delay recording; chunks queue behind it.
+        const session = (async () => {
+          await ensureFillyBackendAvailable();
+          const { facilityId, formFields, language } =
+            await buildSessionExtras(options);
+          return createMedispeakSession({
+            facilityId,
+            fields: buildFieldSpecs(formFields),
+            language,
+          });
+        })();
+        sessionPromiseRef.current = session;
+        medispeakHandleRef.current = null;
+        session.then(
+          (handle) => {
+            if (sessionPromiseRef.current === session) {
+              medispeakHandleRef.current = handle;
+            }
+          },
+          (err) => {
+            // Stopped/cancelled meanwhile — stop handles its own errors.
+            if (sessionPromiseRef.current !== session || !recorderRef.current) {
+              return;
+            }
+            sessionPromiseRef.current = null;
+            recorderRef.current.cancel();
+            recorderRef.current = null;
+            stopTimer();
+            const message = describeRecordingError(err);
+            setError(message);
+            updateStatus("failed");
+            onErrorRef.current?.(
+              err instanceof Error ? err : new Error(message),
+            );
+          },
+        );
 
         const recorder = new VadRecorder({
           onSpeechChunk: enqueueSegment,
@@ -300,9 +343,13 @@ export function useFilly({
           (await resolvePreferredMicDeviceId()) ?? undefined,
         );
 
+        // Session setup failed while the mic was starting; already reported.
+        if (sessionPromiseRef.current !== session) return;
+
         updateStatus("recording");
         startTimer();
       } catch (err) {
+        sessionPromiseRef.current = null;
         recorderRef.current?.cancel();
         recorderRef.current = null;
         const message = describeRecordingError(err);
@@ -313,7 +360,14 @@ export function useFilly({
         setIsStarting(false);
       }
     },
-    [buildSessionExtras, enqueueSegment, updateStatus, startTimer, onError],
+    [
+      buildSessionExtras,
+      enqueueSegment,
+      updateStatus,
+      startTimer,
+      stopTimer,
+      onError,
+    ],
   );
 
   const pauseRecording = useCallback(() => {
@@ -331,10 +385,10 @@ export function useFilly({
   }, [startTimer, updateStatus]);
 
   const stopRecording = useCallback(async () => {
-    const handle = medispeakHandleRef.current;
+    const session = sessionPromiseRef.current;
     try {
       const recorder = recorderRef.current;
-      if (!recorder || !handle) return;
+      if (!recorder || !session) return;
 
       stopTimer(true);
       updateStatus("processing");
@@ -347,6 +401,7 @@ export function useFilly({
       // stays live.
       await recorder.stop();
       recorderRef.current = null;
+      const handle = await session;
       await Promise.allSettled(pendingUploadsRef.current);
       pendingUploadsRef.current = [];
 
@@ -410,6 +465,7 @@ export function useFilly({
     recorderRef.current?.cancel();
     recorderRef.current = null;
     medispeakHandleRef.current = null;
+    sessionPromiseRef.current = null;
     pendingUploadsRef.current = [];
     stopTimer();
     accumulatedRef.current = 0;
@@ -421,6 +477,7 @@ export function useFilly({
     recorderRef.current?.cancel();
     recorderRef.current = null;
     medispeakHandleRef.current = null;
+    sessionPromiseRef.current = null;
     segmentSeqRef.current = 0;
     pendingUploadsRef.current = [];
     stopTimer();
