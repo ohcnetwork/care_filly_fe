@@ -83,6 +83,14 @@ async function createWarmVad(): Promise<WarmVad> {
   }
 }
 
+/** Caches a warm VAD for reuse, dropping it if it turns out to have failed. */
+function cacheWarmVad(pending: Promise<WarmVad>): void {
+  warmVadPromise = pending;
+  pending.catch(() => {
+    if (warmVadPromise === pending) warmVadPromise = null;
+  });
+}
+
 /** Hands out the warm VAD (building one if needed); each is used once. */
 function takeWarmVad(): Promise<WarmVad> {
   const pending = warmVadPromise ?? createWarmVad();
@@ -101,11 +109,7 @@ export function preloadVad(): void {
   ).connection;
   if (connection?.saveData || warmVadPromise) return;
 
-  const pending = createWarmVad();
-  warmVadPromise = pending;
-  pending.catch(() => {
-    if (warmVadPromise === pending) warmVadPromise = null;
-  });
+  cacheWarmVad(createWarmVad());
 }
 
 // Speech below this many seconds is treated as a VAD misfire and dropped —
@@ -152,9 +156,6 @@ export class VadRecorder {
     // The VAD is usually ready already; either way it initialises while the
     // mic permission prompt is open.
     const warmPromise = takeWarmVad();
-    warmPromise.catch(() => {
-      if (warmVadPromise === warmPromise) warmVadPromise = null;
-    });
 
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
@@ -168,16 +169,28 @@ export class VadRecorder {
       });
     } catch (err) {
       // Mic denied/unavailable — keep the prepared VAD for the next attempt.
-      warmVadPromise ??= warmPromise;
+      if (!warmVadPromise) cacheWarmVad(warmPromise);
       throw err;
     }
 
-    const warm = await warmPromise;
+    // Cancelled while the permission prompt was open: free the mic right away.
     if (this.cancelled) {
-      // Cancelled while starting — don't attach the mic; keep one VAD warm.
-      if (warmVadPromise) void warm.ctx.close();
-      else warmVadPromise = warmPromise;
       this.releaseStream();
+      if (!warmVadPromise) cacheWarmVad(warmPromise);
+      return;
+    }
+
+    let warm: WarmVad;
+    try {
+      warm = await warmPromise;
+    } catch (err) {
+      this.releaseStream();
+      throw err;
+    }
+    if (this.cancelled) {
+      this.releaseStream();
+      if (warmVadPromise) void warm.ctx.close();
+      else cacheWarmVad(warmPromise);
       return;
     }
     this.warm = warm;
