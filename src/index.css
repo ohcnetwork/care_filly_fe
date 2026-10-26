@@ -5,6 +5,18 @@
 }
 
 /*
+  The nested import above scopes Tailwind's theme variables to
+  `.care-filly-fe-container :root`, which never matches. Radius tokens then fall
+  back to the host's `@theme inline` setup, which does not emit them as CSS
+  variables, so `rounded-xl/2xl/3xl` resolve to nothing. Define them explicitly.
+*/
+.care-filly-fe-container {
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+}
+
+/*
   The default border color has changed to `currentColor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
   looks the same as it did with Tailwind CSS v3.
