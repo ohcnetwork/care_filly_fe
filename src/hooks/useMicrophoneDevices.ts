@@ -43,6 +43,7 @@ export function useMicrophoneDevices(
     if (!enabled) return;
     let cancelled = false;
     setIsLoading(true);
+    setError(null);
 
     (async () => {
       try {
