@@ -44,6 +44,27 @@ export interface FillyAvatarProps {
 }
 
 /** How long a click's "happy" bounce overrides the mapped status. */
+// Several avatars mount at once. Safari resolves a second `import()` of a
+// module that is still evaluating (these chunks use top-level await) too early,
+// surfacing as "Cannot access 'X' before initialization". Share one import.
+let avatarLibsPromise: ReturnType<typeof importAvatarLibs> | null = null;
+
+function importAvatarLibs() {
+  return Promise.all([
+    import("@ohcnetwork/care-filly-character"),
+    import("three"),
+    import("three/examples/jsm/environments/RoomEnvironment.js"),
+  ]);
+}
+
+function loadAvatarLibs() {
+  avatarLibsPromise ??= importAvatarLibs().catch((err) => {
+    avatarLibsPromise = null;
+    throw err;
+  });
+  return avatarLibsPromise;
+}
+
 const HAPPY_BOUNCE_MS = 1600;
 /** Idle with no click for this long → falls asleep. */
 const IDLE_SLEEP_MS = 5000;
@@ -146,11 +167,7 @@ export function FillyAvatar({
     let cancelled = false;
     let dispose: (() => void) | undefined;
 
-    Promise.all([
-      import("@ohcnetwork/care-filly-character"),
-      import("three"),
-      import("three/examples/jsm/environments/RoomEnvironment.js"),
-    ]).then(([mascot, THREE, { RoomEnvironment }]) => {
+    loadAvatarLibs().then(([mascot, THREE, { RoomEnvironment }]) => {
       if (cancelled) return;
 
       const renderer = new THREE.WebGLRenderer({
