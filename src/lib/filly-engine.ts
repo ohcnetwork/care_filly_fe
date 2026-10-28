@@ -1,5 +1,7 @@
 import type { AudioNodeVAD } from "@ricky0123/vad-web";
 
+import { clearPreferredMicDeviceId } from "@/lib/mic-preference";
+
 /**
  * In-house voice-activity-detection recorder.
  *
@@ -157,16 +159,27 @@ export class VadRecorder {
     // mic permission prompt is open.
     const warmPromise = takeWarmVad();
 
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
+    const requestMic = (id?: string) =>
+      navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+          ...(id ? { deviceId: { exact: id } } : {}),
         },
         video: false,
       });
+
+    try {
+      try {
+        this.stream = await requestMic(deviceId);
+      } catch (err) {
+        if (!deviceId || (err as Error)?.name !== "OverconstrainedError") {
+          throw err;
+        }
+        await clearPreferredMicDeviceId();
+        this.stream = await requestMic();
+      }
     } catch (err) {
       // Mic denied/unavailable — keep the prepared VAD for the next attempt.
       if (!warmVadPromise) cacheWarmVad(warmPromise);

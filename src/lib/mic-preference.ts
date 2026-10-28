@@ -29,6 +29,15 @@ export function storeMicDeviceId(key: string, deviceId: string): void {
   }
 }
 
+export async function clearPreferredMicDeviceId(): Promise<void> {
+  const userId = await resolveCurrentUserId();
+  try {
+    localStorage.removeItem(micDeviceStorageKey(userId));
+  } catch {
+    // ignore storage errors (private mode, quota, etc.)
+  }
+}
+
 /** The user's preferred mic device id, if one was ever picked in settings. */
 export async function resolvePreferredMicDeviceId(): Promise<string | null> {
   const userId = await resolveCurrentUserId();
