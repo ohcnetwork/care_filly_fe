@@ -720,6 +720,7 @@ function FillyControllerInner({ actions, invoke }: FillyControllerProps) {
 
   const filly = useFilly({
     invoke,
+    preloadEnabled: !preference.isLoading && preference.enabled,
     onTranscript: (transcript) => {
       setLiveTranscript(transcript);
     },

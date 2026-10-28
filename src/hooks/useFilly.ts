@@ -96,6 +96,7 @@ interface UseFillyOptions {
   /** Reserved — the CARE JWT is read from localStorage by the request layer. */
   accessToken?: string;
   invoke?: ScribeInvoke;
+  preloadEnabled?: boolean;
   onStatusChange?: (status: FillyStatus) => void;
   onTranscript?: (transcript: string) => void;
   onResult?: (result: FillyResult) => void;
@@ -122,6 +123,7 @@ interface UseFillyReturn {
 
 export function useFilly({
   invoke,
+  preloadEnabled = true,
   onStatusChange,
   onTranscript,
   onResult,
@@ -179,13 +181,14 @@ export function useFilly({
   // Warm the VAD (no mic involved) once the widget is mounted and idle, so
   // starting a recording only has to attach the microphone.
   useEffect(() => {
+    if (!preloadEnabled) return;
     if (typeof requestIdleCallback === "function") {
       const id = requestIdleCallback(preloadVad, { timeout: 5000 });
       return () => cancelIdleCallback(id);
     }
     const id = setTimeout(preloadVad, 2000);
     return () => clearTimeout(id);
-  }, []);
+  }, [preloadEnabled]);
 
   useEffect(() => {
     return () => {
